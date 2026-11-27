@@ -1,0 +1,38 @@
+version: 2
+
+models:
+  - name: stg_orders
+    description: One row per order, duplicates from the raw feed removed.
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+      - name: revenue_eur
+        data_tests: [not_null]
+
+  - name: stg_touchpoints
+    columns:
+      - name: touchpoint_id
+        data_tests: [unique, not_null]
+      - name: channel
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [paid_search, paid_social, display, affiliate, email, organic]
+
+  - name: fct_attribution
+    description: Credit per touchpoint under last-click and position-based models.
+    columns:
+      - name: touchpoint_id
+        data_tests: [not_null]
+
+  - name: fct_channel_roas
+    description: Revenue, cost and ROAS per channel under both models.
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+
+  - name: qa_duplicate_orders
+    description: Orders that arrived more than once in the raw feed.
+
+  - name: qa_click_injection
+    description: Affiliate clicks logged seconds before an order. Excluded from attribution.

@@ -1,0 +1,32 @@
+name: measurement_lab
+version: "0.1.0"
+profile: measurement_lab
+config-version: 2
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+vars:
+  lookback_days: 30          # touchpoints older than this before the order get no credit
+  injection_threshold_s: 10  # click less than this many seconds before an order is suspicious
+  affiliate_fee: 0.10        # affiliate commission, share of attributed revenue (matches generate_data.py)
+
+seeds:
+  measurement_lab:
+    raw_touchpoints:
+      +column_types: {touch_ts: timestamp}
+    raw_orders:
+      +column_types: {order_ts: timestamp}
+    raw_ad_spend:
+      +column_types: {spend_date: date}
+
+models:
+  measurement_lab:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table
+    qa:
+      +materialized: view

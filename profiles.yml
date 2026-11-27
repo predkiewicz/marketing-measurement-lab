@@ -1,0 +1,8 @@
+# Local DuckDB file only. No accounts, no credentials.
+measurement_lab:
+  target: duckdb
+  outputs:
+    duckdb:
+      type: duckdb
+      path: target/lab.duckdb
+      threads: 4
