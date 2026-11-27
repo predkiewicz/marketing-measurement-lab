@@ -1,6 +1,6 @@
 # Decision memo: marketing budget, next quarter
 
-To: VP Marketing, CFO · From: Marketing Analytics · Data: orders January to March 2026 with 180 days of repeat purchases, channel holdout tests 2025, budget-step tests, regional campaign June 2026
+To: CMO, CFO · From: Marketing Analytics · Data: orders January to March 2026 with 180 days of repeat purchases, channel holdout tests 2025, budget-step tests, regional campaign June 2026
 
 *Fictional company, synthetic data. Every number comes from a fresh `dbt build` of this repo; `python scripts/report.py` prints them.*
 
@@ -89,11 +89,11 @@ The tracking is cleaned before any of this: 29 duplicate purchase events (2.2% o
 
 | # | Decision | Recommendation | Owner |
 |---|---|---|---|
-| 1 | Stop paid search in its current form; grow paid social to about 1.5 times today | Yes, in monthly steps of about 15%. The plan expects social's average cost per added customer to rise from EUR 36 to about EUR 41. Stop adding budget when the next customers cost more than EUR 61, what they bring in 180 days | VP Marketing |
+| 1 | Stop paid search in its current form; grow paid social to about 1.5 times today | Yes, in monthly steps of about 15%. The plan expects social's average cost per added customer to rise from EUR 36 to about EUR 41. Stop adding budget when the next customers cost more than EUR 61, what they bring in 180 days | CMO |
 | 1b | The EUR 6,990 that no channel can use profitably | Keep it unspent, or fund the display and affiliate tests from it | CFO |
-| 2 | Affiliate programme | Pause in half the regions for 8 weeks; withhold commission on the 48 flagged orders; renegotiate to pay only for new customers | Performance team |
-| 3 | Display | Test about half of today's budget in some regions, sized in advance with the power analysis | Analytics |
-| 4 | Regional campaign | Do not repeat in this form | VP Marketing |
-| 5 | Reporting | Report ROI on added customers next to last-click ROAS, on consent-modelled counts, and base budget decisions on it | VP Marketing, CFO |
+| 2 | Affiliate programme | Pause in half the regions for 8 weeks; withhold commission on the 48 flagged orders; renegotiate to pay only for new customers | Head of performance |
+| 3 | Display | Test about half of today's budget in some regions, sized in advance with the power analysis | Marketing analyst |
+| 4 | Regional campaign | Do not repeat in this form | CMO |
+| 5 | Reporting | Report ROI on added customers next to last-click ROAS, on consent-modelled counts, and base budget decisions on it | CMO, CFO |
 
 How these numbers were produced and why each method was chosen: [methodology.md](methodology.md). Which of these analyses each kind of decision actually needs: [decision_guide.md](decision_guide.md).
