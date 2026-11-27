@@ -15,6 +15,7 @@ models:
         data_tests: [unique, not_null]
       - name: channel
         data_tests:
+          - not_null  # accepted_values alone lets NULL through
           - accepted_values:
               arguments:
                 values: [paid_search, paid_social, display, affiliate, email, organic]
@@ -33,11 +34,113 @@ models:
       - name: channel
         data_tests: [unique, not_null]
 
+  - name: fct_channel_cac
+    description: Cost per customer per channel under last click, position-based and incremental views.
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+
+  - name: fct_blended_cac
+    description: Blended CAC next to paid-only, without-affiliate and incremental views.
+    columns:
+      - name: view
+        data_tests: [unique, not_null]
+
+  - name: fct_holdout_daily
+    description: Channel holdout tests, one row per test and day, holdout vs control.
+
+  - name: fct_channel_incrementality
+    description: Share of a channel's attributed conversions that are incremental, from its holdout test, with a 95% interval.
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+      - name: incrementality
+        data_tests: [not_null]
+
+  - name: fct_customer_value
+    description: Cumulative gross profit per customer by day since the first order, up to the value horizon.
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+
+  - name: fct_channel_value
+    description: Average cumulative gross profit per customer by channel, weighted by position-based credit.
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+
+  - name: fct_channel_decisions
+    description: SCALE, TEST or STOP per paid channel and campaign, from ROI on incremental customers and its interval.
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+      - name: decision
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [SCALE, TEST, STOP]
+
+  - name: fct_response_curves
+    description: Elasticity of added customers to spend per paid channel, from its budget-step test, with a 95% interval.
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+      - name: elasticity
+        data_tests: [not_null]
+
+  - name: fct_channel_cashflow
+    description: Net cash per EUR 1,000 spent by day since acquisition, incremental customers only.
+    columns:
+      - name: net_cash_per_1000_eur
+        data_tests: [not_null]
+
+  - name: fct_consent_impact
+    description: Customers, CAC, ROI and decision per channel under full tracking, consent-only and consent-modelled views.
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+
+  - name: fct_retention_monthly
+    description: Repeat orders per customer by month since the first order, counting only customers observed that long.
+    columns:
+      - name: month
+        data_tests: [unique, not_null]
+
+  - name: fct_ltv_decay
+    description: Monthly decay of repeat buying after month 6, shared by all channels, with a 95% interval.
+
+  - name: fct_channel_lifetime
+    description: Lifetime value per decided channel (180 days observed plus a discounted projection), lifetime ROI and payback month.
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+
+  - name: fct_budget_allocation
+    description: Freed budget split across SCALE channels at equal marginal ROI, each capped at its profitable spend.
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+      - name: allocated_eur
+        data_tests: [not_null]
+
+  - name: fct_budget_scenario
+    description: The always-on budget before and after applying the decisions.
+    columns:
+      - name: plan
+        data_tests: [unique, not_null]
+
   - name: qa_duplicate_orders
     description: Orders that arrived more than once in the raw feed.
 
   - name: qa_click_injection
     description: Affiliate clicks logged seconds before an order. Excluded from attribution.
+
+  - name: fct_geo_placebo
+    description: The geo estimator on all 8,008 sets of 6 of 16 regions, before the campaign, where the true effect is zero.
+    columns:
+      - name: set_id
+        data_tests: [unique, not_null]
 
   - name: fct_geo_daily
     description: One row per day of the geo test, treatment and control as an index of their pre-test average.

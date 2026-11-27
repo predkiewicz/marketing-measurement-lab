@@ -27,4 +27,5 @@ placebo as (
 
 select *
 from placebo
-where abs(lift_log) > {{ var("geo_ci_z") }} * lift_log_se
+-- judged with the placebo standard error: with regional drift, the independent-days one is too small
+where abs(lift_log) > {{ var("geo_ci_z") }} * (select stddev_samp(lift_log) from {{ ref('fct_geo_placebo') }})
