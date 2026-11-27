@@ -36,3 +36,17 @@ models:
 
   - name: qa_click_injection
     description: Affiliate clicks logged seconds before an order. Excluded from attribution.
+
+  - name: fct_geo_daily
+    description: One row per day of the geo test, treatment and control as an index of their pre-test average.
+    columns:
+      - name: geo_date
+        data_tests: [unique, not_null]
+      - name: log_gap
+        data_tests: [not_null]
+
+  - name: fct_geo_test
+    description: Geo test readout. Relative lift with a 95% interval, incremental conversions and cost per incremental conversion.
+    columns:
+      - name: lift
+        data_tests: [not_null]

@@ -4,6 +4,7 @@ Everything is fake and seeded, so every run produces the same CSVs.
 Planted on purpose, so the checks in the dbt project have something to find:
   - duplicate purchase events (a tag firing twice)
   - click injection on one affiliate (click logged seconds before the order)
+  - a geo test with a known effect: a campaign in 6 of 16 German states lifts conversions by 8%
 
 Usage: python scripts/generate_data.py [--users N] [--seed S]
 Writes CSVs to seeds/.
@@ -82,6 +83,51 @@ def generate(users: int, seed: int) -> dict[str, list[dict]]:
     return {"raw_touchpoints": touchpoints, "raw_orders": orders, "raw_ad_spend": spend}
 
 
+# Geo test: a campaign switched on in some German states, with a known effect.
+REGIONS = {  # ISO 3166-2 code: (name, population in millions)
+    "DE-BW": ("Baden-Württemberg", 11.1), "DE-BY": ("Bayern", 13.2), "DE-BE": ("Berlin", 3.8),
+    "DE-BB": ("Brandenburg", 2.6), "DE-HB": ("Bremen", 0.7), "DE-HH": ("Hamburg", 1.9),
+    "DE-HE": ("Hessen", 6.4), "DE-MV": ("Mecklenburg-Vorpommern", 1.6), "DE-NI": ("Niedersachsen", 8.1),
+    "DE-NW": ("Nordrhein-Westfalen", 18.1), "DE-RP": ("Rheinland-Pfalz", 4.2), "DE-SL": ("Saarland", 1.0),
+    "DE-SN": ("Sachsen", 4.1), "DE-ST": ("Sachsen-Anhalt", 2.2), "DE-SH": ("Schleswig-Holstein", 2.9),
+    "DE-TH": ("Thüringen", 2.1),
+}
+GEO_START = datetime(2026, 4, 6)   # a Monday
+GEO_PRE_DAYS, GEO_TEST_DAYS = 56, 28
+GEO_TREATED = 6                    # regions that get the campaign
+GEO_LIFT = 0.08                    # planted true effect on conversions (matches dbt var geo_planted_lift)
+GEO_CONV_PER_M = 12                # baseline conversions per day per million people
+GEO_SPEND_PER_M = 120              # campaign spend per day per million people, EUR
+
+
+def generate_geo(seed: int) -> dict[str, list[dict]]:
+    # own random stream, so adding the geo test does not change the attribution data
+    rng = random.Random(seed + 1)
+    codes = list(REGIONS)
+    treated = set(rng.sample(codes, GEO_TREATED))
+    regions = [{"region_code": c, "region_name": n, "population_m": p,
+                "test_group": "treatment" if c in treated else "control"}
+               for c, (n, p) in REGIONS.items()]
+
+    daily = []
+    for d in range(GEO_PRE_DAYS + GEO_TEST_DAYS):
+        day = GEO_START + timedelta(days=d)
+        # shared across regions: weekend dip, slow trend, national news / weather
+        national = (0.85 if day.weekday() >= 5 else 1.0) * (1 + 0.002 * d) * rng.gauss(1, 0.04)
+        in_test = d >= GEO_PRE_DAYS
+        for c, (_, pop) in REGIONS.items():
+            mu = pop * GEO_CONV_PER_M * national * rng.gauss(1, 0.05)
+            if in_test and c in treated:
+                mu *= 1 + GEO_LIFT
+            daily.append({
+                "geo_date": day.date().isoformat(),
+                "region_code": c,
+                "conversions": max(0, round(rng.gauss(mu, mu ** 0.5))),
+                "campaign_spend_eur": round(pop * GEO_SPEND_PER_M, 2) if in_test and c in treated else 0.0,
+            })
+    return {"raw_geo_regions": regions, "raw_geo_daily": daily}
+
+
 def write(tables: dict[str, list[dict]]) -> None:
     OUT.mkdir(exist_ok=True)
     for name, rows in tables.items():
@@ -102,4 +148,7 @@ if __name__ == "__main__":
     assert tables == generate(a.users, a.seed)
     ids = [o["order_id"] for o in tables["raw_orders"]]
     assert len(ids) > len(set(ids)), "no duplicate orders planted"
-    write(tables)
+    geo = generate_geo(a.seed)
+    assert geo == generate_geo(a.seed)
+    assert sum(r["test_group"] == "treatment" for r in geo["raw_geo_regions"]) == GEO_TREATED
+    write(tables | geo)
