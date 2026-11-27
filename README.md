@@ -61,6 +61,7 @@ flowchart LR
     dec --> life
     attr --> chval
     raw --> geo[fct_geo_daily] --> geotest[fct_geo_test]
+    geo --> placebo[fct_geo_placebo] --> geotest
     cac --> dec[fct_channel_decisions]
     chval --> dec
     geotest --> dec
@@ -242,7 +243,7 @@ With 6 regions, a 28-day test finds a 10% lift 80% of the time; a 14-day test ne
 
 ## How it is checked
 
-`dbt build` runs 31 models and 65 tests. Besides the usual `unique` / `not_null` / `accepted_values` tests, sixteen tests guard the logic itself:
+`dbt build` runs 28 models and 62 tests. Besides the usual `unique` / `not_null` / `accepted_values` tests, sixteen tests guard the logic itself:
 
 - `assert_weights_sum_to_one`: every order hands out exactly 100% credit under each model.
 - `assert_revenue_reconciles`: attributed revenue equals the revenue of every order, `unattributed` included.
@@ -282,7 +283,7 @@ A test only counts once it has been seen failing, so each one was run against a 
 
 Two tests could not fail in their first version, and the deliberate break is what showed it: the CAC reconciliation read the commission from the model it was checking, and the budget plan copied its total cost instead of adding up what it moved. Both now recompute what they check.
 
-GitHub Actions runs the generator, the power check, the full build at 75% gross margin (two SCALE channels, so the allocation test has something to decide), the full build at default settings and the report on every push.
+GitHub Actions runs the generator, the power check, the full build at 75% gross margin (two SCALE channels, so the allocation test has something to decide), the full build with 90 days of customer value (the sensitivity check), the full build at default settings and the report on every push.
 
 ## Recreate it
 

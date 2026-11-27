@@ -79,6 +79,7 @@ Every method in this repo is a choice, and every choice moves the numbers. This 
 - **Impact:** incrementality = conversions lost in total / conversions the channel would have claimed. Paid social 0.92, display 0.64, paid search 0.38, affiliate 0.11.
 - **Check:** `assert_incrementality_recovers_planted`: every interval contains the planted value. Assuming every attributed conversion is incremental makes it fail for all four channels.
 - **Limit:** a holdout costs revenue while it runs (the incremental part of the channel is switched off). Affiliate's interval reaches below zero, which is impossible in reality and shows how hard a 9% channel is to measure: a sharper answer needs more regions or a longer test.
+- **Simplification, on purpose:** the holdout data has independent daily noise, and the holdout interval uses the textbook standard error. The geo test below shows why that is too narrow when regions drift; for real holdouts, use the same placebo-set interval. Kept simple here so the holdout logic stays readable.
 
 ### Verdict line at 0.5
 

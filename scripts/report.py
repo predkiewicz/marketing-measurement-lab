@@ -1,4 +1,4 @@
-"""Print the results of a build and draw the geo test chart.
+"""Print the results of a build and draw the three charts in docs/.
 
 Usage: python scripts/report.py   (after dbt build)
 Reads target/lab.duckdb, prints every result table, writes docs/decisions.svg, docs/response_curves.svg and docs/geo_test.svg.
@@ -89,7 +89,7 @@ def decision_chart(rows: list[tuple]) -> str:
     refs = "".join(
         f'<line class="ref" x1="{x(v):.1f}" x2="{x(v):.1f}" y1="{top - 8}" y2="{h - 32}"/>'
         f'<text class="axis" x="{x(v) + dx:.1f}" y="{top - 14}" text-anchor="{anchor}">{label}</text>'
-        for v, label, anchor, dx in ((1.0, "pays back: 1.0", "end", 4), (1.5, "1.5: scale", "start", -4)))
+        for v, label, anchor, dx in ((1.0, "pays back: 1.0", "end", 4),))
     ticks = "".join(f'<text class="axis" x="{x(v):.1f}" y="{h - 14}" text-anchor="middle">{v:.1f}</text>'
                     for v in [i / 2 for i in range(int(hi * 2) + 1)])
     return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" font-family="system-ui, sans-serif" font-size="12" role="img" aria-label="Return on incremental customers after 180 days per channel, worst to best case, with the decision: {"; ".join(f"{r[0]} {r[1]} at {r[4]:.2f}" for r in rows)}.">
@@ -162,7 +162,7 @@ def curve_chart(rows: list[tuple]) -> str:
 
 def geo_chart(rows: list[tuple]) -> str:
     """Treatment and control index, 7-day trailing average, test window shaded. Static SVG with a dark mode."""
-    # ponytail: trailing 7-day mean removes the shared weekend dip; the first 6 days are dropped
+    # trailing 7-day mean removes the shared weekend dip; the first 6 days are dropped
     rows = [(rows[i][0], rows[i][1], sum(r[2] for r in rows[i - 6:i + 1]) / 7, sum(r[3] for r in rows[i - 6:i + 1]) / 7)
             for i in range(6, len(rows))]
     w, h, left, right, top, bottom = 760, 320, 48, 96, 36, 36
