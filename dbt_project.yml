@@ -19,10 +19,15 @@ vars:
   value_horizon_days: 180       # customer value counts orders up to this many days after the first;
                                 # also the payback goal: ROI >= 1 means paid back within this horizon
   goal_blended_cac: 26          # blended CAC target for the budget plan, EUR
-  scale_min_roi: 1.5            # SCALE: 180-day gross profit / incremental CAC at least this (and >= 1 in the worst case)
-  stop_max_roi: 1.0             # STOP: below this even in the best case
-  scale_cost_premium: 0.5       # the next euro in a scaled channel buys customers 50% more expensively (diminishing returns)
+  stop_max_roi: 1.0             # STOP: ROI below this even in the best case. SCALE: the next euro still pays back
+                                # (marginal ROI >= 1, from the response curve) and the worst case pays back too
+  curve_max_multiplier: 3       # never plan beyond the highest spend level the budget-step tests covered
+  curve_ci_t: 2.776             # 95% t value for the curve fit: 6 spend levels, 2 parameters, 4 degrees of freedom
   incrementality_threshold: 0.5  # verdict line: interval wholly below = mostly claims existing demand, wholly above = mostly incremental
+  curve_planted_elasticity:  # planted by generate_data.py (CURVE_ELASTICITY); only the tests use it
+    paid_social: 0.70
+    display: 0.60
+    paid_search: 0.40
   holdout_planted_incrementality:  # planted by generate_data.py (HOLDOUT_INCREMENTALITY); only the tests use it
     paid_social: 0.85
     display: 0.60

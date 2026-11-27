@@ -1,8 +1,9 @@
--- What the decisions do to the always-on budget (attribution period). STOP channels lose their cost
--- and only their INCREMENTAL customers; the freed budget moves to SCALE channels in proportion to
--- their cost, buying customers at incremental CAC x (1 + scale_cost_premium), because the next euro
--- in a channel is less efficient than the average one. TEST channels stay as they are.
--- The regional campaign is a separate budget and not part of this plan.
+-- What the decisions do to the always-on budget (attribution period).
+--   STOP channels lose their cost and only their ADDED customers.
+--   SCALE channels take the freed budget, but only up to their profitable spend (where the next euro
+--   stops paying back, from the response curve). Budget beyond that is not spent: spending it would
+--   lower profit. Added customers follow the curve: today x multiplier ^ elasticity.
+--   TEST channels stay as they are. The regional campaign is a separate budget, not part of this plan.
 with d as (
     select * from {{ ref('fct_channel_decisions') }} where channel != 'regional_campaign'
 ),
@@ -23,21 +24,30 @@ moves as (
     from d
 ),
 
-gains as (
+allocation as (
+    -- ponytail: freed budget split in proportion to today's cost, each channel capped at its profitable
+    -- spend; with several SCALE channels, equalising marginal ROI would allocate better
     select
-        sum(m.freed_eur * d.cost_eur / m.scale_cost) as allocated_eur,
-        sum(m.freed_eur * d.cost_eur / m.scale_cost / (d.cac_incremental * (1 + {{ var("scale_cost_premium") }}))) as customers_gained,
-        sum(m.freed_eur * d.cost_eur / m.scale_cost / (d.cac_incremental * (1 + {{ var("scale_cost_premium") }}))
-            * d.gross_profit_per_customer_180d) as profit_gained
+        d.*,
+        least(m.freed_eur * d.cost_eur / m.scale_cost, d.cost_eur * (d.profitable_spend_multiplier - 1)) as allocated_eur
     from d
     cross join moves as m
     where d.decision = 'SCALE'
 ),
 
+gains as (
+    select
+        sum(allocated_eur) as allocated_eur,
+        sum(customers_incremental * (power(1 + allocated_eur / cost_eur, elasticity) - 1)) as customers_gained,
+        sum(customers_incremental * (power(1 + allocated_eur / cost_eur, elasticity) - 1)
+            * gross_profit_per_customer_180d) as profit_gained
+    from allocation
+),
+
 plans as (
     select 1 as sort, 'Current plan' as plan, cost_eur, customers, gross_profit_180d from current_plan
     union all
-    select 2, 'After decisions: stop, reallocate to scale',
+    select 2, 'After decisions',
         c.cost_eur - m.freed_eur + coalesce(g.allocated_eur, 0),
         c.customers - m.customers_lost + coalesce(g.customers_gained, 0),
         c.gross_profit_180d - m.profit_lost + coalesce(g.profit_gained, 0)
@@ -53,6 +63,7 @@ select
     round(customers, 1) as customers,
     round(cost_eur / customers, 2) as blended_cac,
     round(gross_profit_180d, 2) as gross_profit_180d,
+    round(gross_profit_180d - cost_eur, 2) as profit_after_marketing_180d,
     round(gross_profit_180d / cost_eur, 2) as roi_180,
     cost_eur / customers <= {{ var("goal_blended_cac") }} as meets_cac_goal
 from plans

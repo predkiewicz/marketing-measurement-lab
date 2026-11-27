@@ -6,7 +6,7 @@ Every method in this repo is a choice, and every choice moves the numbers. This 
 
 ### Synthetic, seeded data with planted problems
 
-- **Decision:** generate all data with `scripts/generate_data.py` (Python standard library, fixed seed). Plant known problems and known effects: duplicate purchase events, affiliate click injection, orders with no touchpoint, repeat purchases that depend on the acquisition channel, a known incrementality per paid channel, and an 8% lift in the geo test.
+- **Decision:** generate all data with `scripts/generate_data.py` (Python standard library, fixed seed). Plant known problems and known effects: duplicate purchase events, affiliate click injection, orders with no touchpoint, repeat purchases that depend on the acquisition channel, a known incrementality and a known response curve per paid channel, and an 8% lift in the geo test.
 - **Alternatives:** a public dataset (the GA4 sample e-commerce data); anonymised real data.
 - **Why:** with real data the true answer is unknown, so nobody can tell whether a method works. Planted problems give a ground truth: the QA models must find them and the geo readout must recover the 8%. A public repo also cannot hold real company data.
 - **Impact:** the methods are validated against a known answer. The data is cleaner than reality. For example, the gap between injected clicks (2 to 8 seconds) and real clicks (at least 4.5 hours) is wider than it would be in practice.
@@ -124,37 +124,44 @@ Every method in this repo is a choice, and every choice moves the numbers. This 
 - **Why:** it combines the three things that decide whether money is well spent: does the channel add customers (incrementality), are they worth it (value), and how fast (horizon). ROAS misses the first two, CAC misses the second.
 - **Assumption:** customers a channel adds are worth as much as the average customer it claims. If its added customers are better or worse than its claimed ones, the ROI moves with them.
 
+### Response curves from budget-step tests
+
+- **Decision:** for 8 weeks per paid channel, give each of the 16 regions a random spend level each week (0, 0.5, 0.75, 1, 1.5, 2 or 3 times today). Regions at 0 give that week's baseline; added customers per million people at each level = conversions minus baseline, averaged over the weeks. Fit `added = today x multiplier ^ elasticity` by regressing ln(added) on ln(multiplier).
+- **Alternatives:** a flat cost premium on scaled budget (the previous version: +50%); a saturating Hill curve with adstock, as in marketing mix models; reading curves off ad-platform forecasts.
+- **Why:** a flat premium is a guess that cannot be tested and says nothing about where to stop. A curve fitted to real budget steps can. The power curve has two parameters, is linear on logs and fits in plain SQL. A Hill curve also models a ceiling, but six spend levels cannot pin down three parameters. The power curve never fully saturates, so the plan never goes beyond the highest level tested (`curve_max_multiplier`, 3x).
+- **Impact:** elasticities 0.68 (paid social), 0.57 (display), 0.28 (paid search). On this curve, marginal ROI = elasticity x average ROI, and the next euro stops paying back at today x (elasticity x ROI) ^ (1 / (1 - elasticity)): 1.48x today for paid social, 0.49x for display.
+- **Check:** `assert_curves_recover_planted`: every interval contains the planted elasticity. Fitting on raw conversions without the baseline fails it for all 3 channels.
+- **Limit:** with 6 levels and 4 degrees of freedom (`curve_ci_t` = 2.776), the intervals are wide. For paid social, the profitable spend ranges from 0.51x (elasticity 0.40) to the 3x cap (elasticity 0.96). More weeks or regions narrow it; until then, scaling happens in steps.
+
 ### SCALE, TEST, STOP with the uncertainty built in
 
-- **Decision:** SCALE when ROI >= 1.5 (`scale_min_roi`) and >= 1.0 in the worst case; STOP when ROI < 1.0 (`stop_max_roi`) even in the best case; TEST otherwise. Worst and best case come from the incrementality interval.
-- **Alternatives:** decide on the point estimate; rank channels and cut the bottom.
-- **Why:** on the point estimate, affiliate (ROI 0.85) would be stopped, although its interval reaches 3.27: a stop would rest on a test that cannot tell a losing channel from the best one. The rule says TEST instead and names what has to be measured. The 1.5 bar for scaling leaves room for diminishing returns.
+- **Decision:** SCALE when the next euro still pays back (marginal ROI >= 1) and the average ROI is >= 1 even in the worst case; STOP when ROI < 1.0 (`stop_max_roi`) even in the best case; TEST otherwise. Worst and best case come from the incrementality interval. Channels without a response curve (affiliate is paid by commission, the regional campaign ran once) cannot be scaled on this evidence.
+- **Alternatives:** decide on the point estimate; rank channels and cut the bottom; a fixed ROI bar for scaling (the previous version: 1.5).
+- **Why:** on the point estimate, affiliate (ROI 0.85) would be stopped, although its interval reaches 3.27: a stop would rest on a test that cannot tell a losing channel from the best one. The rule says TEST instead and names what has to be measured. For scaling, average ROI answers the wrong question: display averages 1.29, but its last euros return 0.74. The curve answers the right one: does the next euro pay back?
+- **Limit:** marginal ROI uses the elasticity's point estimate. At the low end of its interval, paid social's next euro would return 0.66. The step-wise plan is the answer to that uncertainty.
 - **Impact:** paid social SCALE; display and affiliate TEST; paid search and the regional campaign STOP.
 - **Check:** `assert_every_paid_channel_decided`: no paid channel escapes a decision.
 
-### Budget plan with diminishing returns
+### Budget plan: scale only as far as the next euro pays back
 
-- **Decision:** STOP channels lose their cost and their *added* customers only. The freed budget goes to SCALE channels in proportion to their cost, at incremental CAC x 1.5 (`scale_cost_premium`). TEST channels stay as they are.
-- **Alternatives:** reallocate at today's average CAC; fit response curves.
-- **Why:** reallocating at today's CAC assumes the next euro works as well as the average one, which never holds. A response curve needs budget-step tests that this data does not have, so a flat premium stands in for it and is varied in the sensitivity check.
-- **Impact:** same budget, 1,504 instead of 1,339 customers, blended CAC EUR 24.91 instead of EUR 27.98, 180-day gross profit +14%.
-- **Check:** `assert_scenario_budget_neutral`. Its first version copied the total cost instead of adding up what it moved and could not fail; now it adds up the reallocated money, and a wrong allocation fails it.
+- **Decision:** STOP channels lose their cost and their *added* customers only. SCALE channels take the freed budget in proportion to today's cost, each up to its profitable spend; added customers follow the curve. Budget beyond that is not spent. TEST channels stay as they are.
+- **Alternatives:** spend the whole freed budget at a flat premium (the previous version); equalise marginal ROI across all SCALE channels.
+- **Why:** money a channel cannot turn into profit is better not spent. With one SCALE channel, the split rule and the optimum are the same; with several, equalising marginal ROI would allocate better (on the roadmap).
+- **Impact:** budget EUR 30,475 instead of EUR 37,464, 1,368 instead of 1,339 customers, blended CAC EUR 22.27, profit after marketing EUR 48,070 instead of EUR 38,889. The previous flat-premium plan spent the full budget and promised 1,504 customers and EUR 49,318 profit after marketing: 136 customers that the curve says the extra money cannot buy.
+- **Check:** `assert_scenario_budget_neutral` recomputes the new budget from the decisions and the profitable-spend cap. Dropping the cap fails it. Its first version copied the total cost instead of adding up what it moved and could not fail.
 
 ### Which decisions survive other assumptions
 
-Rerun with `dbt build --vars '{...}'`; ROI shown as expected value.
+Rerun with `dbt build --vars '{...}'`; ROI shown as expected value, profitable spend for paid social in brackets.
 
-| Assumption | Paid social | Display | Affiliate | Paid search | Regional campaign | Plan: blended CAC |
+| Assumption | Paid social | Display | Affiliate | Paid search | Regional campaign | Plan: profit after marketing |
 |---|---|---|---|---|---|---:|
-| As set: 50% margin, 180 days, premium 50% | SCALE 1.68 | TEST 1.29 | TEST 0.85 | STOP 0.38 | STOP 0.50 | EUR 24.91 |
-| Gross margin 40% | TEST 1.34 | TEST 1.04 | TEST 0.68 | STOP 0.30 | STOP 0.40 | EUR 18.78 * |
-| Gross margin 60% | SCALE 2.01 | SCALE 1.55 | TEST 1.02 | STOP 0.46 | STOP 0.60 | EUR 25.09 |
-| 90 days of value | TEST 1.30 | TEST 1.04 | TEST 0.70 | STOP 0.31 | STOP 0.40 | EUR 18.78 * |
-| Scale premium 100% | SCALE 1.68 | TEST 1.29 | TEST 0.85 | STOP 0.38 | STOP 0.50 | EUR 26.04 |
+| As set: 50% margin, 180 days | SCALE 1.68 (1.48x) | TEST 1.29 | TEST 0.85 | STOP 0.38 | STOP 0.50 | EUR 48,070 (now EUR 38,889) |
+| Gross margin 40% | TEST 1.34 | TEST 1.04 | TEST 0.68 | STOP 0.30 | STOP 0.40 | EUR 33,437 (now EUR 23,618) |
+| Gross margin 60% | SCALE 2.01 (2.60x) | TEST 1.55 | TEST 1.02 | STOP 0.46 | STOP 0.60 | EUR 64,792 (now EUR 54,159) |
+| 90 days of value | TEST 1.30 | TEST 1.04 | TEST 0.70 | STOP 0.31 | STOP 0.40 | EUR 32,629 (now EUR 22,818) |
 
-\* With no SCALE channel, the freed budget is saved instead of moved, so the plan spends less and blended CAC is not comparable with the other rows.
-
-The STOP decisions hold everywhere. The SCALE decision for paid social needs at least 50% gross margin and the full 180 days of value. A 100% premium on scaled budget misses the CAC goal by EUR 0.04: the reason to scale in steps and watch the cost per added customer.
+The STOP decisions hold everywhere, and the plan adds EUR 9,000 to 11,000 of profit after marketing under every assumption. Paid social's SCALE needs at least 50% gross margin and the full 180 days of value; at 40% margin or 90 days, its next euro no longer pays back. Display's last euros do not pay back under any of these assumptions (marginal ROI 0.59 to 0.88), even at 60% margin, where its average ROI reaches 1.55.
 
 ## Geo test
 

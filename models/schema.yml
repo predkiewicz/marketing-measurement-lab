@@ -80,6 +80,14 @@ models:
               arguments:
                 values: [SCALE, TEST, STOP]
 
+  - name: fct_response_curves
+    description: Elasticity of added customers to spend per paid channel, from its budget-step test, with a 95% interval.
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+      - name: elasticity
+        data_tests: [not_null]
+
   - name: fct_channel_cashflow
     description: Net cash per EUR 1,000 spent by day since acquisition, incremental customers only.
     columns:

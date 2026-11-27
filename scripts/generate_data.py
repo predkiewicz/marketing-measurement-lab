@@ -8,6 +8,7 @@ Planted on purpose, so the checks in the dbt project have something to find:
   - a geo test with a known effect: a campaign in 6 of 16 German states lifts conversions by 8%
   - repeat purchases within 180 days that depend on the channel that brought the customer
     (REPEAT_RATE: coupon-driven affiliate customers come back least)
+  - budget-step tests with a known response curve per paid channel (CURVE_ELASTICITY)
   - channel holdout tests with known incrementality: part of what a channel claims would have
     arrived anyway as organic or unattributed (HOLDOUT_INCREMENTALITY)
 
@@ -226,6 +227,36 @@ def generate_holdouts(seed: int) -> dict[str, list[dict]]:
     return {"raw_holdout_daily": rows}
 
 
+# Budget-step tests: for 8 weeks, each region gets a random spend level for one paid channel, from
+# 0 (switched off) to 3x today's spend. Planted response curve: the customers a channel adds grow
+# with spend as multiplier ** elasticity, so each extra euro buys fewer customers than the last.
+CURVE_ELASTICITY = {"paid_social": 0.70, "display": 0.60, "paid_search": 0.40}  # matches dbt var curve_planted_elasticity
+CURVE_LEVELS = [0, 0, 0, 0.5, 0.5, 0.75, 0.75, 1, 1, 1, 1.5, 1.5, 2, 2, 3, 3]  # one per region and week
+CURVE_WEEKS = 8
+
+
+def generate_budget_steps(seed: int) -> dict[str, list[dict]]:
+    rng = random.Random(seed + 5)  # own random stream
+    rows = []
+    base = GEO_CONV_PER_M * 7  # conversions per million people and week without the channel's added customers
+    for channel, elasticity in CURVE_ELASTICITY.items():
+        added_today = base * HOLDOUT_SHARES[channel] * HOLDOUT_INCREMENTALITY[channel]
+        for week in range(1, CURVE_WEEKS + 1):
+            national = rng.gauss(1, 0.03)
+            levels = CURVE_LEVELS[:]
+            rng.shuffle(levels)
+            for (code, (_, pop)), m in zip(REGIONS.items(), levels):
+                mu = pop * national * (base * rng.gauss(1, 0.04) + added_today * m ** elasticity)
+                rows.append({
+                    "test_channel": channel,
+                    "week": week,
+                    "region_code": code,
+                    "spend_multiplier": m,
+                    "conversions": max(0, round(rng.gauss(mu, mu ** 0.5))),
+                })
+    return {"raw_budget_steps": rows}
+
+
 def write(tables: dict[str, list[dict]]) -> None:
     OUT.mkdir(exist_ok=True)
     for name, rows in tables.items():
@@ -255,4 +286,6 @@ if __name__ == "__main__":
                    if r["is_holdout_region"] and r["is_test_period"]), "channel still on in holdout"
     repeats = generate_repeats(tables, a.seed)
     assert repeats == generate_repeats(tables, a.seed)
-    write(tables | geo | holdouts | repeats)
+    steps = generate_budget_steps(a.seed)
+    assert steps == generate_budget_steps(a.seed)
+    write(tables | geo | holdouts | repeats | steps)

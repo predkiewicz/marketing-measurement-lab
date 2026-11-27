@@ -1,6 +1,6 @@
 # marketing-measurement-lab
 
-One decision per marketing channel, **scale, test or stop**, and the tested data behind it. Attribution, holdout tests, customer value, payback and tracking QA all feed that one decision, against the goals of an imaginary online shop: pay back customer acquisition within 180 days and bring blended CAC under EUR 26.
+One decision per marketing channel, **scale, test or stop**, and the tested data behind it. Attribution, holdout tests, response curves, customer value, payback and tracking QA all feed that one decision, against the goals of an imaginary online shop: pay back customer acquisition within 180 days and bring blended CAC under EUR 26.
 
 Runs on your laptop with DuckDB: no account, no cloud, no cost. All data is synthetic and seeded: there is no real company, customer or ad account behind any number here.
 
@@ -13,28 +13,28 @@ Runs on your laptop with DuckDB: no account, no cloud, no cost. All data is synt
 
 ![ROI on incremental customers after 180 days per channel, worst to best case, with the decision](docs/decisions.svg)
 
-| Channel | Decision | Incremental CAC | 180-day gross profit per customer | ROI, worst / expected / best | Payback | Why |
-|---|---|---:|---:|---|---:|---|
-| paid_social | **SCALE** | EUR 36.06 | EUR 60.55 | 1.39 / 1.68 / 1.83 | by day 30 | Pays back even in the worst case |
-| display | **TEST** | EUR 41.01 | EUR 53.08 | 0.92 / 1.29 / 1.68 | by day 90 | Likely pays back, but the holdout is too uncertain to scale |
-| affiliate | **TEST** | EUR 58.29 | EUR 49.58 | 0.00 / 0.85 / 3.27 | none | Could be the best or a losing channel; 48 injected clicks found |
-| paid_search | **STOP** | EUR 147.21 | EUR 56.09 | 0.29 / 0.38 / 0.48 | none | Does not pay back even in the best case |
-| regional_campaign | **STOP** | EUR 113.24 | EUR 57.02 | 0.27 / 0.50 / 0.73 | none | Works (+8% conversions) but does not pay back |
+| Channel | Decision | Incremental CAC | ROI, worst / expected / best | Next euro (marginal ROI) | Profitable spend | Payback | Why |
+|---|---|---:|---|---:|---:|---:|---|
+| paid_social | **SCALE** | EUR 36.06 | 1.39 / 1.68 / 1.83 | 1.14 | 1.48x today | by day 30 | The next euro still pays back, and so does the worst case |
+| display | **TEST** | EUR 41.01 | 0.92 / 1.29 / 1.68 | 0.74 | 0.49x today | by day 90 | Pays back on average, but its last euros do not: test a lower budget |
+| affiliate | **TEST** | EUR 58.29 | 0.00 / 0.85 / 3.27 | n/a | n/a | none | Could be a winning or a losing channel; 48 injected clicks found |
+| paid_search | **STOP** | EUR 147.21 | 0.29 / 0.38 / 0.48 | 0.11 | n/a | none | Does not pay back even in the best case |
+| regional_campaign | **STOP** | EUR 113.24 | 0.27 / 0.50 / 0.73 | n/a | n/a | none | Works (+8% conversions) but does not pay back |
 
-ROI here is the 180-day gross profit of the customers a channel **added** (not the ones it claimed), per euro it cost. At 1.0 the channel has paid for itself within the horizon. The rule only speaks when the data allows it:
+ROI here is the 180-day gross profit of the customers a channel **added** (not the ones it claimed), per euro it cost. At 1.0 the channel has paid for itself within the horizon. Average ROI says whether a channel is worth having; marginal ROI, from its response curve, says whether the *next* euro is. The rule only speaks when the data allows it:
 
-- **SCALE**: ROI at least 1.5, and at least 1.0 even at the pessimistic end of the incrementality interval.
+- **SCALE**: the next euro still pays back (marginal ROI at least 1.0), and the average pays back even at the pessimistic end of the incrementality interval.
 - **STOP**: ROI below 1.0 even at the optimistic end.
 - **TEST**: everything else. The data cannot yet back a scale or a stop, so the next step is a sharper test.
 
-**What the decisions do to the goals.** Stopping paid search frees EUR 14,127 and loses only the 96 customers it actually added. Moving that budget to paid social, at a 50% higher cost per customer than today (the next euro is never as good as the average one):
+**What the decisions do to the goals.** Stopping paid search frees EUR 14,127 and loses only the 96 customers it actually added. Paid social takes as much of it as still pays back: its response curve says the next euro stops paying back at 1.48 times today's spend, so it gets EUR 7,137. The other EUR 6,990 is not spent, because spending it would lower profit.
 
-| Plan | Cost | Customers | Blended CAC | 180-day gross profit | Goal: CAC under EUR 26 |
-|---|---:|---:|---:|---:|---|
-| Current | EUR 37,464 | 1,339 | EUR 27.98 | EUR 76,353 | missed |
-| After decisions | EUR 37,464 | 1,504 | EUR 24.91 | EUR 86,783 | met |
+| Plan | Cost | Customers | Blended CAC | 180-day gross profit | Profit after marketing | Goal: CAC under EUR 26 |
+|---|---:|---:|---:|---:|---:|---|
+| Current | EUR 37,464 | 1,339 | EUR 27.98 | EUR 76,353 | EUR 38,889 | missed |
+| After decisions | EUR 30,475 | 1,368 | EUR 22.27 | EUR 78,544 | EUR 48,070 | met |
 
-Same budget, 12% more customers, 14% more gross profit. The regional campaign is a separate budget: stopping it saves EUR 81,984 per 28-day run, for which it buys about EUR 41,000 of 180-day gross profit.
+19% less budget, 2% more customers, and 24% more profit after marketing. The regional campaign is a separate budget: stopping it saves EUR 81,984 per 28-day run, for which it buys about EUR 41,000 of 180-day gross profit.
 
 `fct_channel_decisions` and `fct_budget_scenario` hold these tables; `python scripts/report.py` prints them.
 
@@ -50,6 +50,7 @@ flowchart LR
     qa --> paths
     paths --> attr[fct_attribution] --> roas[fct_channel_roas]
     raw --> hold[fct_holdout_daily] --> incr[fct_channel_incrementality]
+    raw --> curves[fct_response_curves]
     roas --> cac[fct_channel_cac]
     incr --> cac --> blended[fct_blended_cac]
     stg --> value[fct_customer_value] --> chval[fct_channel_value]
@@ -58,6 +59,7 @@ flowchart LR
     cac --> dec[fct_channel_decisions]
     chval --> dec
     geotest --> dec
+    curves --> dec
     qa --> dec
     dec --> plan[fct_budget_scenario]
     dec --> cash[fct_channel_cashflow]
@@ -112,7 +114,25 @@ Blended CAC, the number finance sees, next to the views that explain it:
 
 Affiliates look like the cheapest channel and on paper pull blended CAC down from EUR 29.77 to EUR 27.98. But only about 12 of their 103 customers are incremental. Without affiliates the business saves EUR 675 in commission, loses about 12 customers, and blended CAC drops to EUR 27.71.
 
-### 4. What a customer is worth: value and payback
+### 4. How far to scale: response curves
+
+A channel that pays back on average can still waste its last euros. To see how the customers a channel adds grow with spend, each paid channel ran an 8-week budget-step test: every week, each of the 16 regions got a random spend level, from switched off to 3 times today. Regions with the channel off give the baseline; the rest show the added customers at each level. A curve `added = today x spend ^ elasticity` fits them; elasticity below 1 means each extra euro buys fewer customers than the last.
+
+| Channel | Planted elasticity | Measured | 95% interval |
+|---|---:|---:|---:|
+| paid_social | 0.70 | 0.68 | 0.40 to 0.96 |
+| display | 0.60 | 0.57 | 0.12 to 1.02 |
+| paid_search | 0.40 | 0.28 | 0.01 to 0.56 |
+
+On this curve the next euro earns elasticity x average ROI, which gives each channel's marginal ROI and the spend at which the next euro stops paying back:
+
+![Marginal ROI of the next euro by spend level, per channel](docs/response_curves.svg)
+
+Paid social can grow to about 1.5 times today's spend. Display is already beyond its profitable level: its average ROI of 1.29 hides last euros that earn only 0.74. Paid search is far past it at any spend.
+
+The elasticity intervals are wide: six spend levels are few points for a curve. For paid social, the profitable spend lies anywhere between 0.5 and 3 times today across its interval. That is why the plan grows social in steps and re-measures.
+
+### 5. What a customer is worth: value and payback
 
 Customers come back. Gross profit per customer (50% margin), cumulative by day since the first order, weighted by position-based credit:
 
@@ -138,14 +158,14 @@ The cash view puts value and cost together: net cash per EUR 1,000 spent, by day
 
 Paid social is back in the black within a month, so scaling it ties up little cash. Display needs three months. Of every EUR 1,000 in paid search, EUR 619 is still lost after six months.
 
-### 5. Is the data telling the truth: tracking QA
+### 6. Is the data telling the truth: tracking QA
 
 | Check | What it finds | In this data | Effect on the decision |
 |---|---|---|---|
 | `qa_duplicate_orders` | Purchase tag firing twice | 29 orders, EUR 1,806 revenue overstated (2.2%) | Removed before any ROAS, CAC or value is computed |
 | `qa_click_injection` | Affiliate clicks logged 2 to 8 seconds before checkout | 48 clicks, EUR 2,912 of orders | Excluded from attribution; listed on the affiliate decision for a commission dispute |
 
-### 6. Did the campaign cause it: geo test
+### 7. Did the campaign cause it: geo test
 
 A campaign ran for 28 days in 6 of Germany's 16 states (Bayern, Berlin, Bremen, Mecklenburg-Vorpommern, Saarland, Sachsen); the other 10 states are the control. The generator planted a true lift of 8%.
 
@@ -173,17 +193,18 @@ With 6 regions, a 28-day test finds a 7% lift 80% of the time; a 14-day test nee
 
 ## How it is checked
 
-`dbt build` runs 21 models and 46 tests. Besides the usual `unique` / `not_null` / `accepted_values` tests, eleven tests guard the logic itself:
+`dbt build` runs 22 models and 50 tests. Besides the usual `unique` / `not_null` / `accepted_values` tests, twelve tests guard the logic itself:
 
 - `assert_weights_sum_to_one`: every order hands out exactly 100% credit under each model.
 - `assert_revenue_reconciles`: attributed revenue equals the revenue of every order, `unattributed` included.
 - `assert_incrementality_recovers_planted`: each holdout readout's interval contains the incrementality the generator planted.
+- `assert_curves_recover_planted`: each fitted elasticity interval contains the elasticity the generator planted.
 - `assert_cac_reconciles`: blended CAC rests on every customer and every euro of cost, the affiliate commission recomputed independently.
 - `assert_value_reconciles`: total customer value equals margin times all first and repeat orders within the horizon, recomputed from the sources.
 - `assert_value_never_decreases`: cumulative gross profit only grows with time.
 - `assert_every_paid_channel_decided`: every channel that costs money gets a decision, and every decision a cash line.
 - `assert_cashflow_matches_roi`: the cash line ends where the ROI says (net cash at the horizon = 1,000 x (ROI - 1)).
-- `assert_scenario_budget_neutral`: the budget plan moves money, it does not create it.
+- `assert_scenario_budget_neutral`: the new budget equals the old one minus what STOP channels freed plus what SCALE channels may take up to their profitable spend, recomputed independently.
 - `assert_geo_test_recovers_planted_lift`: the geo readout's interval contains the lift the generator planted.
 - `assert_geo_placebo_shows_no_effect`: the same estimator on the two halves of the pre-campaign period finds nothing.
 
@@ -197,6 +218,8 @@ A test only counts once it has been seen failing, so each one was run against a 
 - Dropping the `coalesce` for customers without repeat orders makes the value reconciliation fail; counting only same-day repeat orders fails both value tests.
 - Reading every cash day from the first order only fails the cash test for all 5 decided channels.
 - Dropping display from the decision model fails the every-channel test; allocating the freed budget with the wrong denominator fails the budget test.
+- Fitting the curves on raw conversions, without subtracting the switched-off regions' baseline, fails the elasticity test for all 3 channels.
+- Dropping the profitable-spend cap from the plan (moving all freed budget to social) fails the budget test.
 - Swapping treatment and control fails the planted-lift test; letting the placebo read into the campaign period fails the placebo test.
 - `geo_power.py` checks itself: with the interval removed (z = 0) its false-alarm check fails.
 
@@ -230,7 +253,7 @@ python scripts/generate_data.py  # writes seeds/*.csv
 dbt build --profiles-dir .       # ends with: Done. PASS=... ERROR=0
 ```
 
-**4. Read the results.** Prints the decisions, the budget plan and every table behind them, and redraws both charts in `docs/`:
+**4. Read the results.** Prints the decisions, the budget plan and every table behind them, and redraws the charts in `docs/`:
 
 ```bash
 python scripts/report.py
@@ -251,24 +274,25 @@ Different data: `python scripts/generate_data.py --users 20000 --seed 1`, then s
 ## Layout
 
 ```
-scripts/generate_data.py   synthetic touchpoints, orders, repeat orders, ad spend, holdout and geo tests (stdlib only)
+scripts/generate_data.py   synthetic touchpoints, orders, repeat orders, ad spend, holdout, budget-step and geo tests (stdlib only)
 scripts/geo_power.py       simulation-based power for the geo test (stdlib only)
-scripts/report.py          prints every result table, draws docs/decisions.svg and docs/geo_test.svg
+scripts/report.py          prints every result table, draws the three charts in docs/
 docs/                      decision memo, methodology, charts
 models/staging/            cleaned sources, duplicates removed
 models/qa/                 tracking checks: duplicate orders, click injection
-models/marts/              attribution, ROAS, CAC, incrementality, customer value, geo test, decisions, budget plan
+models/marts/              attribution, ROAS, CAC, incrementality, response curves, customer value, geo test, decisions, budget plan
 tests/                     logic tests that must fail when the logic breaks
 ```
 
-Settings live in `dbt_project.yml` vars. Goals and decision rules: gross margin (50%), value horizon and payback goal (180 days), blended CAC goal (EUR 26), scale and stop thresholds (ROI 1.5 and 1.0), cost premium on scaled budget (50%). Measurement: lookback window (30 days), click-injection threshold (10 seconds), affiliate fee (10%), incrementality verdict line (0.5), geo test start (1 June 2026) and interval (95%).
+Settings live in `dbt_project.yml` vars. Goals and decision rules: gross margin (50%), value horizon and payback goal (180 days), blended CAC goal (EUR 26), stop threshold (ROI 1.0), highest spend level the curves may plan for (3x today). Measurement: lookback window (30 days), click-injection threshold (10 seconds), affiliate fee (10%), incrementality verdict line (0.5), geo test start (1 June 2026) and interval (95%).
 
 ## Roadmap
 
 - [x] Incrementality-calibrated CAC: holdout tests per paid channel, CAC reported vs incremental
 - [x] Customer value and payback: repeat purchases by acquisition channel, 180-day gross profit, payback day
 - [x] Decisions per channel and the budget plan they imply
-- [ ] Response curves instead of a flat 50% cost premium: how fast CAC rises as a channel scales, from budget-step tests
+- [x] Response curves from budget-step tests: marginal ROI and profitable spend per channel
+- [ ] Optimal allocation across several SCALE channels (equal marginal ROI) instead of a split by today's cost
 - [x] Cash view per channel: net cash per EUR 1,000 by day since acquisition
 - [ ] Consent-aware counts: simulate consent opt-outs that differ by device and channel, show how they distort ROAS, and how modelled conversions fill the gap
 - [ ] Stronger geo inference: autocorrelated and uneven regional data, where the simple interval becomes too narrow; fix with permutation inference or time-based regression
