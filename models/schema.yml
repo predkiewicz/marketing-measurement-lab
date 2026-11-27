@@ -20,9 +20,11 @@ models:
                 values: [paid_search, paid_social, display, affiliate, email, organic]
 
   - name: fct_attribution
-    description: Credit per touchpoint under last-click and position-based models.
+    description: Credit per touchpoint under last-click and position-based models. Orders without an eligible touchpoint get one 'unattributed' row.
     columns:
-      - name: touchpoint_id
+      - name: order_id
+        data_tests: [not_null]
+      - name: channel
         data_tests: [not_null]
 
   - name: fct_channel_roas

@@ -4,6 +4,7 @@ Everything is fake and seeded, so every run produces the same CSVs.
 Planted on purpose, so the checks in the dbt project have something to find:
   - duplicate purchase events (a tag firing twice)
   - click injection on one affiliate (click logged seconds before the order)
+  - direct orders with no tracked touchpoint (typed URL, app, blocked tracking)
   - a geo test with a known effect: a campaign in 6 of 16 German states lifts conversions by 8%
 
 Usage: python scripts/generate_data.py [--users N] [--seed S]
@@ -25,6 +26,7 @@ CHANNELS = {  # channel: (share of touchpoints, cost per click EUR)
 }
 FIRST_TOUCH = (0.10, 0.45, 0.30, 0.05, 0.05, 0.05)  # same channel order as CHANNELS
 AFFILIATE_FEE = 0.10  # share of order revenue
+DIRECT_ORDERS = 60    # orders with no tracked touchpoint
 START = datetime(2026, 1, 1)
 DAYS = 90
 OUT = Path(__file__).resolve().parent.parent / "seeds"
@@ -67,6 +69,16 @@ def generate(users: int, seed: int) -> dict[str, list[dict]]:
                     "channel": "affiliate",
                     "touch_ts": (order_ts - timedelta(seconds=rng.randint(2, 8))).isoformat(sep=" "),
                 })
+
+    # planted: orders with no tracked touchpoint. Own random stream, so the data above stays unchanged.
+    drng = random.Random(seed + 2)
+    for i in range(1, DIRECT_ORDERS + 1):
+        orders.append({
+            "order_id": f"o{len(orders) + 1:05d}",
+            "user_id": f"d{i:05d}",
+            "order_ts": (START + timedelta(seconds=drng.randrange(DAYS * 86400))).isoformat(sep=" "),
+            "revenue_eur": round(drng.lognormvariate(4.0, 0.5), 2),
+        })
 
     spend = []
     clicks_per_day = {c: 0 for c in CHANNELS}

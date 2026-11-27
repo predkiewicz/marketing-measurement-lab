@@ -1,5 +1,6 @@
--- Attributed revenue must equal the revenue of orders that have a path: the models
--- move credit between channels, they never create or lose money. Returns a row on mismatch.
+-- Attributed revenue must equal the revenue of every order in stg_orders: the models move
+-- credit between channels (including 'unattributed'), they never create or lose money.
+-- Returns a row on mismatch.
 with attributed as (
     select
         sum(revenue_eur * last_click_weight) as last_click,
@@ -10,7 +11,6 @@ with attributed as (
 orders as (
     select sum(revenue_eur) as revenue
     from {{ ref('stg_orders') }}
-    where order_id in (select order_id from {{ ref('fct_attribution') }})
 )
 
 select *

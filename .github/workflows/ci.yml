@@ -11,3 +11,4 @@ jobs:
       - run: python scripts/generate_data.py
       - run: python scripts/geo_power.py
       - run: dbt build --profiles-dir . --target duckdb
+      - run: python scripts/report.py
