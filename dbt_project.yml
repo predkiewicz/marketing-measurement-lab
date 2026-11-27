@@ -12,6 +12,9 @@ vars:
   lookback_days: 30          # touchpoints older than this before the order get no credit
   injection_threshold_s: 10  # click less than this many seconds before an order is suspicious
   affiliate_fee: 0.10        # affiliate commission, share of attributed revenue (matches generate_data.py)
+  geo_test_start: "2026-06-01"  # first day the campaign runs in the treatment regions
+  geo_ci_z: 1.96             # 95% interval for the geo test readout
+  geo_planted_lift: 0.08     # true effect planted by generate_data.py (GEO_LIFT); only the tests use it
 
 seeds:
   measurement_lab:
@@ -21,6 +24,8 @@ seeds:
       +column_types: {order_ts: timestamp}
     raw_ad_spend:
       +column_types: {spend_date: date}
+    raw_geo_daily:
+      +column_types: {geo_date: date}
 
 models:
   measurement_lab:

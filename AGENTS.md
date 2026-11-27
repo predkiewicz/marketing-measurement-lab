@@ -13,6 +13,7 @@ dbt build --profiles-dir .
 ## Done means
 
 - `dbt build --profiles-dir .` ends with `ERROR=0`. Paste the `Done. PASS=...` line into the PR or summary.
+- `python scripts/geo_power.py` finishes without an assertion error (its self-check).
 - A new test has been seen failing: break the logic it guards, run it, show the failure, restore. Say which break you used.
 - README numbers match a fresh build. If a change moves them, update the tables.
 
