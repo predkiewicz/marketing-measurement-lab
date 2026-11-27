@@ -16,3 +16,5 @@ jobs:
       - run: "dbt build --profiles-dir . --target duckdb --vars '{value_horizon_days: 90}'"
       - run: dbt build --profiles-dir . --target duckdb
       - run: python scripts/report.py
+      # one corruption per raw feed at a time; the build must stop every one (about 40 builds)
+      - run: python scripts/poison_check.py

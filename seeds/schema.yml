@@ -1,0 +1,198 @@
+version: 2
+
+# Intake contracts for the raw feeds. The mart tests check logic; these check that what comes in is
+# whole, unique and in range, so a duplicated, blank or impossible row fails the build instead of
+# shifting a decision. Reconciliation tests compare marts with these raw tables, so they can only
+# be trusted once the raw tables pass here.
+
+seeds:
+  - name: raw_orders
+    description: Order events from the shop backend. Duplicate events are expected; stg_orders removes them.
+    columns:
+      - name: order_id
+        data_tests: [not_null]
+      - name: user_id
+        data_tests: [not_null]
+      - name: order_ts
+        data_tests: [not_null]
+      - name: revenue_eur
+        data_tests:
+          - not_null
+          - in_range: {arguments: {min_value: 0.01}}  # refunds belong in their own feed
+
+  - name: raw_touchpoints
+    columns:
+      - name: touchpoint_id
+        data_tests: [unique, not_null]
+      - name: user_id
+        data_tests:
+          - not_null
+          - relationships: {arguments: {to: ref('raw_consent'), field: user_id}}
+      - name: channel
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [paid_search, paid_social, display, affiliate, email, organic]
+      - name: touch_ts
+        data_tests: [not_null]
+
+  - name: raw_repeat_orders
+    columns:
+      - name: repeat_order_id
+        data_tests: [unique, not_null]
+      - name: first_order_id
+        data_tests:
+          - not_null
+          - relationships: {arguments: {to: ref('raw_orders'), field: order_id}}
+      - name: user_id
+        data_tests: [not_null]
+      - name: order_ts
+        data_tests: [not_null]
+      - name: revenue_eur
+        data_tests:
+          - not_null
+          - in_range: {arguments: {min_value: 0.01}}
+
+  - name: raw_ad_spend
+    data_tests:
+      - unique_combination: {arguments: {columns: [spend_date, channel]}}
+    columns:
+      - name: spend_date
+        data_tests: [not_null]
+      - name: channel
+        data_tests:
+          - not_null
+          - accepted_values: {arguments: {values: [paid_search, paid_social, display]}}
+      - name: spend_eur
+        data_tests:
+          - not_null
+          - in_range: {arguments: {min_value: 0}}
+
+  - name: raw_geo_regions
+    columns:
+      - name: region_code
+        data_tests:
+          - unique
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [DE-BW, DE-BY, DE-BE, DE-BB, DE-HB, DE-HH, DE-HE, DE-MV, DE-NI, DE-NW, DE-RP, DE-SL, DE-SN, DE-ST, DE-SH, DE-TH]
+      - name: population_m
+        data_tests:
+          - not_null
+          - in_range: {arguments: {min_value: 0.01}}
+      - name: test_group
+        data_tests:
+          - not_null
+          - accepted_values: {arguments: {values: [treatment, control]}}
+
+  - name: raw_geo_daily
+    data_tests:
+      - unique_combination: {arguments: {columns: [geo_date, region_code]}}
+    columns:
+      - name: geo_date
+        data_tests: [not_null]
+      - name: region_code
+        data_tests:
+          - not_null
+          - relationships: {arguments: {to: ref('raw_geo_regions'), field: region_code}}
+      - name: conversions
+        data_tests:
+          - not_null
+          - in_range: {arguments: {min_value: 0}}
+          - whole_number
+      - name: campaign_spend_eur
+        data_tests:
+          - not_null
+          - in_range: {arguments: {min_value: 0}}
+
+  - name: raw_holdout_daily
+    data_tests:
+      - unique_combination: {arguments: {columns: [test_channel, holdout_date, region_code]}}
+    columns:
+      - name: test_channel
+        data_tests:
+          - not_null
+          - accepted_values: {arguments: {values: [paid_social, display, paid_search, affiliate]}}
+      - name: holdout_date
+        data_tests: [not_null]
+      - name: region_code
+        data_tests:
+          - not_null
+          - relationships: {arguments: {to: ref('raw_geo_regions'), field: region_code}}
+      - name: is_holdout_region
+        data_tests: [not_null]
+      - name: is_test_period
+        data_tests: [not_null]
+      - name: conversions_total
+        data_tests:
+          - not_null
+          - in_range: {arguments: {min_value: 0}}
+          - whole_number
+      - name: conversions_channel
+        data_tests:
+          - not_null
+          - in_range: {arguments: {min_value: 0}}
+          - whole_number
+
+  - name: raw_budget_steps
+    data_tests:
+      - unique_combination: {arguments: {columns: [test_channel, week, region_code]}}
+    columns:
+      - name: test_channel
+        data_tests:
+          - not_null
+          - accepted_values: {arguments: {values: [paid_social, display, paid_search]}}
+      - name: week
+        data_tests: [not_null]
+      - name: region_code
+        data_tests:
+          - not_null
+          - relationships: {arguments: {to: ref('raw_geo_regions'), field: region_code}}
+      - name: spend_multiplier
+        data_tests:
+          - not_null
+          - in_range: {arguments: {min_value: 0, max_value: "{{ var('curve_max_multiplier') }}"}}
+      - name: conversions
+        data_tests:
+          - not_null
+          - in_range: {arguments: {min_value: 0}}
+          - whole_number
+
+  - name: raw_consent
+    description: Simulation only, to know which journeys tracking would hide.
+    columns:
+      - name: user_id
+        data_tests: [unique, not_null]
+      - name: device
+        data_tests:
+          - not_null
+          - accepted_values: {arguments: {values: [ios, android, desktop]}}
+      - name: consented
+        data_tests: [not_null]
+
+  - name: raw_consent_banner
+    data_tests:
+      - unique_combination: {arguments: {columns: [landing_channel, device]}}
+    columns:
+      - name: landing_channel
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [paid_search, paid_social, display, affiliate, email, organic]
+      - name: device
+        data_tests:
+          - not_null
+          - accepted_values: {arguments: {values: [ios, android, desktop]}}
+      - name: banner_views
+        data_tests:
+          - not_null
+          - in_range: {arguments: {min_value: 1}}
+          - whole_number
+      - name: accepted
+        data_tests:
+          - not_null
+          - in_range: {arguments: {min_value: 0}}
+          - whole_number

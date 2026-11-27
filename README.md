@@ -243,7 +243,13 @@ With 6 regions, a 28-day test finds a 10% lift 80% of the time; a 14-day test ne
 
 ## How it is checked
 
-`dbt build` runs 28 models and 62 tests. Besides the usual `unique` / `not_null` / `accepted_values` tests, sixteen tests guard the logic itself:
+`dbt build` runs 28 models and 147 tests in two layers: intake contracts on every raw feed, and tests that guard the logic.
+
+**Intake: the raw feeds are whole, unique and in range.** `seeds/schema.yml` gives every raw table a contract: required columns not null, one row per key (composite keys such as date and channel included), every region code known, channels and devices from a fixed list, no negative spend, revenue or conversions, counts that are whole numbers, spend levels inside the tested range. `assert_source_chronology` checks what spans columns: first orders inside the data window with their full value horizon observed, repeat orders after their first order and for the same user, touchpoints inside the window, no more channel conversions than total conversions, no more consents than banner views. Column types are pinned in `dbt_project.yml`, so a wrong date or a number written as text fails at `dbt seed`. The logic tests below compare models with these raw tables, so they can only be trusted once the raw tables pass here.
+
+`scripts/poison_check.py` proves the intake layer: it corrupts one raw feed at a time (39 corruptions: duplicated rows, blanks, wrong formats, negative or impossible values, unknown regions and devices, orders in 2019 or 2030, repeat orders before their first order) and runs the full build on each. 37 fail the build at the contract that guards them. The other two are not corruptions: duplicate order events are planted and removed by `stg_orders`, and "yes" in the consent column is read as true. Before the contracts, an external poisoned-data test passed 22 of its 36 corruptions with no failed test, and 3 more were caught only because they happened to break a planted-truth test. They moved spend, customer value, the geo lift or the elasticity, and nothing turned red.
+
+**Logic.** Sixteen tests guard the logic itself:
 
 - `assert_weights_sum_to_one`: every order hands out exactly 100% credit under each model.
 - `assert_revenue_reconciles`: attributed revenue equals the revenue of every order, `unattributed` included.
@@ -264,6 +270,8 @@ With 6 regions, a 28-day test finds a 10% lift 80% of the time; a 14-day test ne
 
 A test only counts once it has been seen failing, so each one was run against a deliberately broken version:
 
+- Every intake contract fails on its own corruption in `scripts/poison_check.py`, and removing a contract (the date and channel key on ad spend) makes the script report the duplicate it let through.
+
 - First-touch weight 0.45 instead of 0.4: 850 orders fail the weights test, and the revenue reconciliation fails.
 - An inner join instead of a left join in `int_order_paths` (unattributed orders dropped): the revenue reconciliation fails.
 - Removing the deduplication makes `unique_stg_orders_order_id` fail on 29 orders.
@@ -283,7 +291,7 @@ A test only counts once it has been seen failing, so each one was run against a 
 
 Two tests could not fail in their first version, and the deliberate break is what showed it: the CAC reconciliation read the commission from the model it was checking, and the budget plan copied its total cost instead of adding up what it moved. Both now recompute what they check.
 
-GitHub Actions runs the generator, the power check, the full build at 75% gross margin (two SCALE channels, so the allocation test has something to decide), the full build with 90 days of customer value (the sensitivity check), the full build at default settings and the report on every push.
+GitHub Actions runs the generator, the power check, the full build at 75% gross margin (two SCALE channels, so the allocation test has something to decide), the full build with 90 days of customer value (the sensitivity check), the full build at default settings, the report and the poison check on every push.
 
 ## Recreate it
 
@@ -335,12 +343,14 @@ Different data: `python scripts/generate_data.py --users 20000 --seed 1`, then s
 scripts/generate_data.py   synthetic touchpoints, orders, repeat orders, ad spend, consent, holdout, budget-step and geo tests (stdlib only)
 scripts/geo_power.py       simulation-based power for the geo test (stdlib only)
 scripts/report.py          prints every result table, draws the three charts in docs/
+scripts/poison_check.py    corrupts one raw feed at a time and checks that the build stops it
+seeds/schema.yml           intake contracts for every raw feed (the CSVs themselves are generated)
 docs/                      decision memo, decision guide, methodology, charts
 models/staging/            cleaned sources, duplicates removed, consent-only touchpoints
 macros/                    attribution and decision rule, shared by the full and the consent-only views
 models/qa/                 tracking checks: duplicate orders, click injection
 models/marts/              attribution, ROAS, CAC, incrementality, response curves, customer and lifetime value, consent, geo test, decisions, budget allocation and plan
-tests/                     logic tests that must fail when the logic breaks
+tests/                     logic tests that must fail when the logic breaks; tests/generic/ holds the intake test types
 ```
 
 Settings live in `dbt_project.yml` vars. Goals and decision rules: gross margin (50%), value horizon and payback goal (180 days), lifetime horizon (36 months) and discount rate (10% a year), analysis date (27 November 2026), blended CAC goal (EUR 26), stop threshold (ROI 1.0), highest spend level the curves may plan for (3x today). Measurement: lookback window (30 days), click-injection threshold (10 seconds), affiliate fee (10%), incrementality verdict line (0.5), geo test start (1 June 2026) and interval (95%).

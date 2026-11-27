@@ -12,6 +12,15 @@ Every method in this repo is a choice, and every choice moves the numbers. This 
 - **Impact:** the methods are validated against a known answer. The data is cleaner than reality. For example, the gap between injected clicks (2 to 8 seconds) and real clicks (at least 4.5 hours) is wider than it would be in practice.
 - **Check:** the generator asserts it is deterministic and that the planted problems exist. Each new problem gets its own random stream, so adding one does not change the existing numbers.
 
+### Intake contracts on every raw feed
+
+- **Decision:** every raw table gets a contract in `seeds/schema.yml` (not null, unique keys, known regions, channels and devices, non-negative values, whole-number counts, spend levels inside the tested range), cross-column checks in `assert_source_chronology`, and pinned column types. `scripts/poison_check.py` corrupts one feed at a time and requires the build to fail.
+- **Alternatives:** trust the generator; rely on the logic tests and the planted truths; a data-quality tool (Great Expectations, Soda, dbt-expectations).
+- **Why:** an external poisoned-data test found that the logic tests did not protect the inputs. A duplicated ad-spend row, a blank conversion count, a negative spend, an order dated 2030 or a region code from another country moved CAC, customer value, the geo lift or the elasticity: 22 of its 36 corruptions passed with no failed test. Three causes: no tests on the raw tables at all; reconciliation tests that compare a model with the same raw table, so a poisoned row shifts both sides equally; and a few corruptions caught only because they happened to push an estimate outside its planted interval, a guard real data does not have. Native dbt tests plus three small generic tests cover it without a new dependency.
+- **Impact:** 37 of the 39 corruptions now fail the build at the contract that guards them; the other two are not corruptions (planted duplicate order events, and "yes" read as true). Results on clean data are unchanged.
+- **Traps found on the way:** `accepted_values` lets NULL through, so every such column also has `not_null`. An inner join to the region table silently dropped an unknown region with EUR 99,999 of spend; a relationships test now fails on it. A repeat order dated before its first order counted as day 0; the chronology test fails on it. An integer column rounds 136.7 conversions to 137 without an error, so counts load as double and a whole-number test catches fractions.
+- **Check:** `scripts/poison_check.py` runs in CI and exits 1 if a corruption slips through; removing one contract makes it fail.
+
 ### DuckDB only
 
 - **Decision:** run everything on a local DuckDB file.

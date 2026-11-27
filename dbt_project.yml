@@ -21,6 +21,7 @@ vars:
   goal_blended_cac: 26          # blended CAC target for the budget plan, EUR
   stop_max_roi: 1.0             # STOP: ROI below this even in the best case. SCALE: the next euro still pays back
                                 # (marginal ROI >= 1, from the response curve) and the worst case pays back too
+  data_start: "2026-01-01"  # first orders and ad spend start here
   observed_until: "2026-11-27"  # analysis date: orders after it have not happened yet
   ltv_months: 36                # lifetime value horizon
   discount_rate: 0.10           # yearly, for future gross profit in lifetime value
@@ -41,18 +42,29 @@ vars:
 
 seeds:
   measurement_lab:
+    # every column with a type that matters is pinned, so a wrong format fails at `dbt seed`
+    # instead of being guessed by CSV inference (contracts: seeds/schema.yml). Counts load as
+    # double, not integer: an integer column rounds 136.7 to 137 silently; whole_number catches it.
     raw_touchpoints:
       +column_types: {touch_ts: timestamp}
     raw_orders:
-      +column_types: {order_ts: timestamp}
+      +column_types: {order_ts: timestamp, revenue_eur: double}
     raw_ad_spend:
-      +column_types: {spend_date: date}
+      +column_types: {spend_date: date, spend_eur: double}
+    raw_geo_regions:
+      +column_types: {population_m: double}
     raw_geo_daily:
-      +column_types: {geo_date: date}
+      +column_types: {geo_date: date, conversions: double, campaign_spend_eur: double}
     raw_holdout_daily:
-      +column_types: {holdout_date: date}
+      +column_types: {holdout_date: date, is_holdout_region: boolean, is_test_period: boolean, conversions_total: double, conversions_channel: double}
+    raw_budget_steps:
+      +column_types: {week: integer, spend_multiplier: double, conversions: double}
     raw_repeat_orders:
-      +column_types: {order_ts: timestamp}
+      +column_types: {order_ts: timestamp, revenue_eur: double}
+    raw_consent:
+      +column_types: {consented: boolean}
+    raw_consent_banner:
+      +column_types: {banner_views: double, accepted: double}
 
 models:
   measurement_lab:

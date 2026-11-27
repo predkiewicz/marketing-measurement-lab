@@ -15,6 +15,7 @@ models:
         data_tests: [unique, not_null]
       - name: channel
         data_tests:
+          - not_null  # accepted_values alone lets NULL through
           - accepted_values:
               arguments:
                 values: [paid_search, paid_social, display, affiliate, email, organic]
