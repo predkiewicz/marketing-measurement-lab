@@ -94,6 +94,12 @@ models:
       - name: net_cash_per_1000_eur
         data_tests: [not_null]
 
+  - name: fct_consent_impact
+    description: Customers, CAC, ROI and decision per channel under full tracking, consent-only and consent-modelled views.
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+
   - name: fct_budget_allocation
     description: Freed budget split across SCALE channels at equal marginal ROI, each capped at its profitable spend.
     columns:

@@ -81,11 +81,7 @@ select
     end as payback_days,
     incrementality_verdict,
     coalesce(q.flagged_clicks, 0) as flagged_fraud_clicks,
-    case
-        when k.elasticity * roi_180 >= 1 and roi_180_worst >= 1 then 'SCALE'
-        when roi_180_best < {{ var("stop_max_roi") }} then 'STOP'
-        else 'TEST'
-    end as decision,
+    {{ decision('k.elasticity * roi_180', 'roi_180', 'roi_180_worst', 'roi_180_best') }} as decision,
     case
         when k.elasticity * roi_180 >= 1 and roi_180_worst >= 1
             then 'The next euro still pays back, and so does the worst case: grow up to the profitable spend'

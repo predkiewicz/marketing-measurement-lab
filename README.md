@@ -1,6 +1,6 @@
 # marketing-measurement-lab
 
-One decision per marketing channel, **scale, test or stop**, and the tested data behind it. Attribution, holdout tests, response curves, customer value, payback and tracking QA all feed that one decision, against the goals of an imaginary online shop: pay back customer acquisition within 180 days and bring blended CAC under EUR 26.
+One decision per marketing channel, **scale, test or stop**, and the tested data behind it. Attribution, holdout tests, response curves, customer value, payback, consent modelling and tracking QA all feed that one decision, against the goals of an imaginary online shop: pay back customer acquisition within 180 days and bring blended CAC under EUR 26.
 
 Runs on your laptop with DuckDB: no account, no cloud, no cost. All data is synthetic and seeded: there is no real company, customer or ad account behind any number here.
 
@@ -61,6 +61,9 @@ flowchart LR
     geotest --> dec
     curves --> dec
     qa --> dec
+    stg --> cons[stg_touchpoints_consented] --> attrc[fct_attribution_consented] --> consent[fct_consent_impact]
+    attr --> consent
+    dec --> consent
     dec --> alloc[fct_budget_allocation] --> plan[fct_budget_scenario]
     dec --> plan
     dec --> cash[fct_channel_cashflow]
@@ -166,7 +169,24 @@ Paid social is back in the black within a month, so scaling it ties up little ca
 | `qa_duplicate_orders` | Purchase tag firing twice | 29 orders, EUR 1,806 revenue overstated (2.2%) | Removed before any ROAS, CAC or value is computed |
 | `qa_click_injection` | Affiliate clicks logged 2 to 8 seconds before checkout | 48 clicks, EUR 2,912 of orders | Excluded from attribution; listed on the affiliate decision for a commission dispute |
 
-### 7. Did the campaign cause it: geo test
+### 7. What tracking cannot see: consent
+
+Users who decline the consent banner are invisible to tracking, but their orders still reach the shop's backend, where they look like `unattributed`. Consent rates differ by device (iOS lowest), and device mix differs by channel: paid social traffic is mostly iOS. So the loss is uneven, and it hits the channel that matters most. The generator plants this; the banner logs only aggregate counts per landing channel and device.
+
+`fct_consent_impact` compares three views of the same orders: the truth (full journeys, which only a simulation has), what a consent-only setup reports, and a model that weights each observed order by 1 / consent rate of the channel its journey started from:
+
+| Channel | Consent rate | Customers: true / observed / modelled | CAC: true / observed / modelled | Decision: true / observed / modelled |
+|---|---:|---|---|---|
+| paid_social | 49% | 449 / 250 (-44%) / 478 (+7%) | EUR 33 / 60 / 31 | SCALE / **TEST** / SCALE |
+| display | 64% | 298 / 193 (-35%) / 311 (+4%) | EUR 26 / 40 / 25 | TEST / TEST / TEST |
+| paid_search | 68% | 252 / 159 (-37%) / 261 (+4%) | EUR 56 / 89 / 54 | STOP / STOP / STOP |
+| affiliate | 67% | 103 / 68 (-34%) / 109 (+5%) | EUR 7 / 10 / 6 | TEST / TEST / TEST |
+
+On consent-only data, paid social loses 44% of its customers, its CAC nearly doubles, and its decision drops from SCALE to TEST: the business would stop growing its best channel. Modelling brings every channel back within 7% and restores every decision.
+
+The holdout, budget-step and geo tests count backend orders, so consent does not touch them; that is one more reason to decide on experiments, not on tracked attribution alone. The weak spot of the model is the leftover: every channel's small over-count lands in `unattributed`, so modelled direct orders shrink from 60 to 6. Direct traffic is the least reliable number in a consent-modelled report.
+
+### 8. Did the campaign cause it: geo test
 
 A campaign ran for 28 days in 6 of Germany's 16 states (Bayern, Berlin, Bremen, Mecklenburg-Vorpommern, Saarland, Sachsen); the other 10 states are the control. The generator planted a true lift of 8%.
 
@@ -194,7 +214,7 @@ With 6 regions, a 28-day test finds a 7% lift 80% of the time; a 14-day test nee
 
 ## How it is checked
 
-`dbt build` runs 23 models and 54 tests. Besides the usual `unique` / `not_null` / `accepted_values` tests, thirteen tests guard the logic itself:
+`dbt build` runs 27 models and 57 tests. Besides the usual `unique` / `not_null` / `accepted_values` tests, fourteen tests guard the logic itself:
 
 - `assert_weights_sum_to_one`: every order hands out exactly 100% credit under each model.
 - `assert_revenue_reconciles`: attributed revenue equals the revenue of every order, `unattributed` included.
@@ -207,6 +227,7 @@ With 6 regions, a 28-day test finds a 7% lift 80% of the time; a 14-day test nee
 - `assert_cashflow_matches_roi`: the cash line ends where the ROI says (net cash at the horizon = 1,000 x (ROI - 1)).
 - `assert_allocation_optimal`: no euro of the freed budget could be moved to earn more. Checked condition by condition: nothing beyond the freed budget, no funded channel below a marginal ROI of 1, funded channels end at the same marginal ROI, no unfunded channel with a better next euro, no money left over while a channel below its cap still earns more than 1.
 - `assert_scenario_budget_neutral`: the new budget equals the old one (recomputed from the books) minus what STOP channels freed plus what the allocation hands out.
+- `assert_consent_model_recovers_truth`: every paid channel's modelled count within 10% of the truth, closer than the consent-only count, and never more orders than exist.
 - `assert_geo_test_recovers_planted_lift`: the geo readout's interval contains the lift the generator planted.
 - `assert_geo_placebo_shows_no_effect`: the same estimator on the two halves of the pre-campaign period finds nothing.
 
@@ -223,6 +244,7 @@ A test only counts once it has been seen failing, so each one was run against a 
 - Fitting the curves on raw conversions, without subtracting the switched-off regions' baseline, fails the elasticity test for all 3 channels.
 - Choosing the least-spending allocation instead of the best one fails the optimality test. At 75% gross margin, where paid social and display are both SCALE, the previous split by today's cost fails it too: it fills display to its cap and leaves EUR 2,832 unspent while social's next euro still earns 1.46.
 - A plan that forgets to add the allocated money fails the budget test.
+- One overall consent rate instead of one per landing channel fails the consent test for display (+11%) and affiliate (+13%).
 - Swapping treatment and control fails the planted-lift test; letting the placebo read into the campaign period fails the placebo test.
 - `geo_power.py` checks itself: with the interval removed (z = 0) its false-alarm check fails.
 
@@ -277,11 +299,12 @@ Different data: `python scripts/generate_data.py --users 20000 --seed 1`, then s
 ## Layout
 
 ```
-scripts/generate_data.py   synthetic touchpoints, orders, repeat orders, ad spend, holdout, budget-step and geo tests (stdlib only)
+scripts/generate_data.py   synthetic touchpoints, orders, repeat orders, ad spend, consent, holdout, budget-step and geo tests (stdlib only)
 scripts/geo_power.py       simulation-based power for the geo test (stdlib only)
 scripts/report.py          prints every result table, draws the three charts in docs/
 docs/                      decision memo, methodology, charts
-models/staging/            cleaned sources, duplicates removed
+models/staging/            cleaned sources, duplicates removed, consent-only touchpoints
+macros/                    attribution and decision rule, shared by the full and the consent-only views
 models/qa/                 tracking checks: duplicate orders, click injection
 models/marts/              attribution, ROAS, CAC, incrementality, response curves, customer value, geo test, decisions, budget allocation and plan
 tests/                     logic tests that must fail when the logic breaks
@@ -297,7 +320,8 @@ Settings live in `dbt_project.yml` vars. Goals and decision rules: gross margin 
 - [x] Response curves from budget-step tests: marginal ROI and profitable spend per channel
 - [x] Optimal allocation across SCALE channels: equal marginal ROI, capped at each channel's profitable spend
 - [x] Cash view per channel: net cash per EUR 1,000 by day since acquisition
-- [ ] Consent-aware counts: simulate consent opt-outs that differ by device and channel, show how they distort ROAS, and how modelled conversions fill the gap
+- [x] Consent-aware counts: uneven consent loss by device and channel, its effect on CAC and decisions, and modelled recovery
+- [ ] Customer lifetime value beyond 180 days: a retention curve per channel, extrapolated with its uncertainty
 - [ ] Stronger geo inference: autocorrelated and uneven regional data, where the simple interval becomes too narrow; fix with permutation inference or time-based regression
 - [ ] Agent skills that work on this repo: a Tag Manager container audit (consent settings, duplicate pixels, dead triggers), a tracking-plan writer, a metric-definition review; each with its own test cases
 

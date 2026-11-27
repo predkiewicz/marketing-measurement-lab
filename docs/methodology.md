@@ -6,7 +6,7 @@ Every method in this repo is a choice, and every choice moves the numbers. This 
 
 ### Synthetic, seeded data with planted problems
 
-- **Decision:** generate all data with `scripts/generate_data.py` (Python standard library, fixed seed). Plant known problems and known effects: duplicate purchase events, affiliate click injection, orders with no touchpoint, repeat purchases that depend on the acquisition channel, a known incrementality and a known response curve per paid channel, and an 8% lift in the geo test.
+- **Decision:** generate all data with `scripts/generate_data.py` (Python standard library, fixed seed). Plant known problems and known effects: duplicate purchase events, uneven consent loss, affiliate click injection, orders with no touchpoint, repeat purchases that depend on the acquisition channel, a known incrementality and a known response curve per paid channel, and an 8% lift in the geo test.
 - **Alternatives:** a public dataset (the GA4 sample e-commerce data); anonymised real data.
 - **Why:** with real data the true answer is unknown, so nobody can tell whether a method works. Planted problems give a ground truth: the QA models must find them and the geo readout must recover the 8%. A public repo also cannot hold real company data.
 - **Impact:** the methods are validated against a known answer. The data is cleaner than reality. For example, the gap between injected clicks (2 to 8 seconds) and real clicks (at least 4.5 hours) is wider than it would be in practice.
@@ -171,6 +171,24 @@ Rerun with `dbt build --vars '{...}'`; ROI shown as expected value, profitable s
 | 90 days of value | TEST 1.30 | TEST 1.04 | TEST 0.70 | STOP 0.31 | STOP 0.40 | EUR 32,629 (now EUR 22,818) |
 
 The STOP decisions hold everywhere, and the plan adds EUR 9,000 to 11,000 of profit after marketing under every assumption. Paid social's SCALE needs at least 50% gross margin and the full 180 days of value; at 40% margin or 90 days, its next euro no longer pays back. Display's last euros do not pay back under any of these assumptions (marginal ROI 0.59 to 0.88), even at 60% margin, where its average ROI reaches 1.55.
+
+## Consent
+
+### Simulate uneven consent loss
+
+- **Decision:** one banner decision per user at the first visit, with consent rates by device (iOS 40%, Android 60%, desktop 80%) and device mix by landing channel (paid social 60% iOS). Declining users' touchpoints never reach tracking; their orders still reach the backend.
+- **Why:** consent loss is not a flat haircut. If it were, every channel would shrink by the same share and decisions would not change. Because it follows device, and device follows channel, it hits paid social hardest.
+- **Impact:** consent rates by landing channel from 49% (paid social) to 68% (paid search, email).
+
+### Model it back by weighting observed journeys
+
+- **Decision:** weight each consented order by 1 / consent rate of the channel its journey started from, measured from the banner's aggregate counts per landing channel. Unconsented orders are pulled back out of `unattributed`.
+- **Alternatives:** scale each channel by one overall consent rate; scale each channel by its own landing rate regardless of the journey; rely on an ad platform's or analytics tool's modelled conversions.
+- **Why:** a user decides once, at the first visit, so the channel of that visit decides whether the whole journey is seen. Weighting the journey (inverse probability weighting) follows that mechanism. Banner counts are aggregate, so the model needs no user data from people who declined. Platform models are black boxes and differ per platform.
+- **Impact:** consent-only data understates every channel by 34% to 44%; modelled counts are within 7%. Paid social's decision is SCALE on true and modelled data, TEST on consent-only data.
+- **Check:** `assert_consent_model_recovers_truth`. One overall consent rate instead of one per landing channel fails it for display (+11%) and affiliate (+13%).
+- **Limit:** the modelled counts run 4% to 7% high here, because buyers' consent rates differ by chance from all visitors' (display 68% against 64%). These errors pile up in the leftover: modelled direct orders fall from 60 to 6. Direct traffic is the least reliable number in a consent-modelled report.
+- **Why experiments matter here:** holdout, budget-step and geo tests count backend orders, so consent does not touch them. The decisions rest on them for incrementality and curves; consent modelling only has to get the attributed customer counts right.
 
 ## Geo test
 

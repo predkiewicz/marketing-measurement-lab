@@ -18,6 +18,11 @@ QUERIES = {
         select channel, cost_eur, spend_multiplier, allocated_eur, marginal_roi_after,
                round(customers_gained, 1) as customers_gained, profitable_spend_multiplier
         from fct_budget_allocation order by allocated_eur desc""",
+    "Consent: what tracking sees and what modelling recovers": """
+        select channel, consent_rate, customers_true, customers_observed, customers_modelled,
+               observed_error, modelled_error, cac_true, cac_observed, cac_modelled,
+               decision_true, decision_observed, decision_modelled
+        from fct_consent_impact order by customers_true desc""",
     "Budget plan before and after the decisions": """
         select plan, cost_eur, customers, blended_cac, gross_profit_180d, profit_after_marketing_180d, roi_180, meets_cac_goal
         from fct_budget_scenario order by sort""",

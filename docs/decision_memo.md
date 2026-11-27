@@ -81,6 +81,8 @@ Display's lower budget is not in these numbers yet: if its test confirms the cur
 
 The tracking is cleaned before any of this: 29 duplicate purchase events (2.2% of revenue overstated) are removed, and injected affiliate clicks get no credit.
 
+**Consent.** About 40% of visitors decline tracking, and on paid social (mostly iPhone traffic) more than half. Read from consent-only tracking, paid social would show half its customers, a CAC of EUR 60 instead of EUR 33, and a TEST instead of a SCALE. These numbers use consent-modelled counts, which come within 7% of the truth for every channel, and the experiments behind them count shop orders, which consent does not affect.
+
 ## Decisions needed
 
 | # | Decision | Recommendation | Owner |
@@ -90,6 +92,6 @@ The tracking is cleaned before any of this: 29 duplicate purchase events (2.2% o
 | 2 | Affiliate programme | Pause in half the regions for 8 weeks; withhold commission on the 48 flagged orders; renegotiate to pay only for new customers | Performance team |
 | 3 | Display | Test about half of today's budget in some regions, sized in advance with the power analysis | Analytics |
 | 4 | Regional campaign | Do not repeat in this form | VP Marketing |
-| 5 | Reporting | Report ROI on added customers next to last-click ROAS, and base budget decisions on it | VP Marketing, CFO |
+| 5 | Reporting | Report ROI on added customers next to last-click ROAS, on consent-modelled counts, and base budget decisions on it | VP Marketing, CFO |
 
 How these numbers were produced and why each method was chosen: [methodology.md](methodology.md).

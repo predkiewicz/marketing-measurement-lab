@@ -8,6 +8,8 @@ Planted on purpose, so the checks in the dbt project have something to find:
   - a geo test with a known effect: a campaign in 6 of 16 German states lifts conversions by 8%
   - repeat purchases within 180 days that depend on the channel that brought the customer
     (REPEAT_RATE: coupon-driven affiliate customers come back least)
+  - a consent banner: users who decline are invisible to tracking, at rates that differ by device,
+    and device mix differs by channel (paid social is mostly iOS), so consent loss is uneven
   - budget-step tests with a known response curve per paid channel (CURVE_ELASTICITY)
   - channel holdout tests with known incrementality: part of what a channel claims would have
     arrived anyway as organic or unattributed (HOLDOUT_INCREMENTALITY)
@@ -227,6 +229,35 @@ def generate_holdouts(seed: int) -> dict[str, list[dict]]:
     return {"raw_holdout_daily": rows}
 
 
+# Consent: one banner decision per user, on the first visit. Rate by device; device mix by the channel
+# the user arrived through. Declining users' touchpoints never reach the tracking; their orders still
+# reach the shop's backend. The banner itself logs only aggregate counts per landing channel and device.
+CONSENT_RATE = {"ios": 0.40, "android": 0.60, "desktop": 0.80}
+DEVICE_MIX = {  # landing channel: (ios, android, desktop)
+    "paid_social": (0.60, 0.30, 0.10), "display": (0.30, 0.30, 0.40), "paid_search": (0.20, 0.20, 0.60),
+    "affiliate": (0.20, 0.20, 0.60), "email": (0.30, 0.20, 0.50), "organic": (0.25, 0.25, 0.50),
+}
+
+
+def generate_consent(tables: dict[str, list[dict]], seed: int) -> dict[str, list[dict]]:
+    rng = random.Random(seed + 6)  # own random stream
+    first_touch = {}
+    for tp in sorted(tables["raw_touchpoints"], key=lambda t: (t["touch_ts"], t["touchpoint_id"])):
+        first_touch.setdefault(tp["user_id"], tp["channel"])
+    users, banner = [], {}
+    for user_id, channel in sorted(first_touch.items()):
+        device = rng.choices(list(CONSENT_RATE), DEVICE_MIX[channel])[0]
+        consented = rng.random() < CONSENT_RATE[device]
+        users.append({"user_id": user_id, "device": device, "consented": consented})
+        key = (channel, device)
+        views, accepted = banner.get(key, (0, 0))
+        banner[key] = (views + 1, accepted + consented)
+    banner_rows = [{"landing_channel": c, "device": d, "banner_views": v, "accepted": a}
+                   for (c, d), (v, a) in sorted(banner.items())]
+    # raw_consent is simulation only: it tells the lab which journeys a real setup would never see
+    return {"raw_consent": users, "raw_consent_banner": banner_rows}
+
+
 # Budget-step tests: for 8 weeks, each region gets a random spend level for one paid channel, from
 # 0 (switched off) to 3x today's spend. Planted response curve: the customers a channel adds grow
 # with spend as multiplier ** elasticity, so each extra euro buys fewer customers than the last.
@@ -288,4 +319,6 @@ if __name__ == "__main__":
     assert repeats == generate_repeats(tables, a.seed)
     steps = generate_budget_steps(a.seed)
     assert steps == generate_budget_steps(a.seed)
-    write(tables | geo | holdouts | repeats | steps)
+    consent = generate_consent(tables, a.seed)
+    assert consent == generate_consent(tables, a.seed)
+    write(tables | geo | holdouts | repeats | steps | consent)
