@@ -135,6 +135,12 @@ models:
   - name: qa_click_injection
     description: Affiliate clicks logged seconds before an order. Excluded from attribution.
 
+  - name: fct_geo_placebo
+    description: The geo estimator on all 8,008 sets of 6 of 16 regions, before the campaign, where the true effect is zero.
+    columns:
+      - name: set_id
+        data_tests: [unique, not_null]
+
   - name: fct_geo_daily
     description: One row per day of the geo test, treatment and control as an index of their pre-test average.
     columns:

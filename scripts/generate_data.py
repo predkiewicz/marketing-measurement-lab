@@ -5,7 +5,8 @@ Planted on purpose, so the checks in the dbt project have something to find:
   - duplicate purchase events (a tag firing twice)
   - click injection on one affiliate (click logged seconds before the order)
   - direct orders with no tracked touchpoint (typed URL, app, blocked tracking)
-  - a geo test with a known effect: a campaign in 6 of 16 German states lifts conversions by 8%
+  - a geo test with a known effect: a campaign in 6 of 16 German states lifts conversions by 8%;
+    regional series drift (autocorrelated deviations, own trends), as real regional data does
   - repeat purchases within 180 days that depend on the channel that brought the customer
     (REPEAT_RATE: coupon-driven affiliate customers come back least)
   - repeat buying beyond 180 days that decays by LATE_DECAY per month, observed only until
@@ -120,6 +121,9 @@ GEO_TREATED = 6                    # regions that get the campaign
 GEO_LIFT = 0.08                    # planted true effect on conversions (matches dbt var geo_planted_lift)
 GEO_CONV_PER_M = 12                # baseline conversions per day per million people
 GEO_SPEND_PER_M = 120              # campaign spend per day per million people, EUR
+GEO_AR = 0.9                       # a region's deviation today carries 90% into tomorrow (local weather, events, stock-outs)
+GEO_DEVIATION_SD = 0.05            # typical size of that deviation
+GEO_TREND_SD = 0.0005              # each region's own slow trend, per day
 
 
 def generate_geo(seed: int) -> dict[str, list[dict]]:
@@ -131,6 +135,12 @@ def generate_geo(seed: int) -> dict[str, list[dict]]:
                 "test_group": "treatment" if c in treated else "control"}
                for c, (n, p) in REGIONS.items()]
 
+    # regional drift: an autocorrelated deviation (AR(1)) and an own trend per region. Without it, every
+    # day is a fresh draw, and a readout that treats days as independent looks more precise than it is.
+    trend = {c: rng.gauss(0, GEO_TREND_SD) for c in codes}
+    deviation = {c: rng.gauss(0, GEO_DEVIATION_SD) for c in codes}
+    innovation_sd = GEO_DEVIATION_SD * (1 - GEO_AR ** 2) ** 0.5
+
     daily = []
     for d in range(GEO_PRE_DAYS + GEO_TEST_DAYS):
         day = GEO_START + timedelta(days=d)
@@ -138,7 +148,8 @@ def generate_geo(seed: int) -> dict[str, list[dict]]:
         national = (0.85 if day.weekday() >= 5 else 1.0) * (1 + 0.002 * d) * rng.gauss(1, 0.04)
         in_test = d >= GEO_PRE_DAYS
         for c, (_, pop) in REGIONS.items():
-            mu = pop * GEO_CONV_PER_M * national * rng.gauss(1, 0.05)
+            deviation[c] = GEO_AR * deviation[c] + rng.gauss(0, innovation_sd)
+            mu = pop * GEO_CONV_PER_M * national * math.exp(deviation[c]) * (1 + trend[c] * d)
             if in_test and c in treated:
                 mu *= 1 + GEO_LIFT
             daily.append({

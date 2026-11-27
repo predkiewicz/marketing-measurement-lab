@@ -6,7 +6,7 @@ Every method in this repo is a choice, and every choice moves the numbers. This 
 
 ### Synthetic, seeded data with planted problems
 
-- **Decision:** generate all data with `scripts/generate_data.py` (Python standard library, fixed seed). Plant known problems and known effects: duplicate purchase events, uneven consent loss, affiliate click injection, orders with no touchpoint, repeat purchases that depend on the acquisition channel and fade after six months, a known incrementality and a known response curve per paid channel, and an 8% lift in the geo test.
+- **Decision:** generate all data with `scripts/generate_data.py` (Python standard library, fixed seed). Plant known problems and known effects: duplicate purchase events, uneven consent loss, affiliate click injection, orders with no touchpoint, repeat purchases that depend on the acquisition channel and fade after six months, a known incrementality and a known response curve per paid channel, and an 8% lift in the geo test on regional data that drifts.
 - **Alternatives:** a public dataset (the GA4 sample e-commerce data); anonymised real data.
 - **Why:** with real data the true answer is unknown, so nobody can tell whether a method works. Planted problems give a ground truth: the QA models must find them and the geo readout must recover the 8%. A public repo also cannot hold real company data.
 - **Impact:** the methods are validated against a known answer. The data is cleaner than reality. For example, the gap between injected clicks (2 to 8 seconds) and real clicks (at least 4.5 hours) is wider than it would be in practice.
@@ -201,34 +201,43 @@ The STOP decisions hold everywhere, and the plan adds EUR 9,000 to 11,000 of pro
 
 ## Geo test
 
+### Regional data that drifts
+
+- **Decision:** each region's daily conversions carry an autocorrelated deviation (90% of today's deviation carries into tomorrow, typical size 5%) and a slow trend of its own, on top of the national pattern.
+- **Why:** an earlier version drew every region-day independently. On such data the textbook interval works, so the lab could not show where it fails. Real regional series drift: local weather, events, stock-outs and regional promotions last for days.
+- **Impact:** the textbook standard error stays at 0.019 while the real noise of the estimator is 0.030.
+
 ### Difference-in-differences on the log ratio of indexed series
 
 - **Decision:** add up daily conversions per group, index each group to its own pre-campaign average, and take the log of the ratio between treatment and control. The lift is the change in the mean of that log ratio from before to during the campaign.
 - **Alternatives:** compare raw totals; synthetic control; time-based regression (TBR).
 - **Why:** indexing removes the size difference between the groups. The log ratio cancels what both groups share: the weekend dip, the trend, national news. The method is simple to explain and to recompute in Python, so the power analysis can use the same estimator.
-- **Impact:** +8.1% estimated against 8% planted.
+- **Impact:** +7.9% estimated against 8% planted.
 - **Check:** `assert_geo_test_recovers_planted_lift`. Swap treatment and control and it fails.
 
-### A 95% interval, reported in money
+### Interval and p-value from placebo sets, not from independent days
 
-- **Decision:** report lift, extra conversions and cost per extra conversion, each with a 95% interval.
-- **Why:** a single cost per extra conversion of EUR 113 sounds precise. The interval of EUR 78 to EUR 210 is what a budget decision has to work with.
-- **Limit:** the standard error treats days as independent. Real daily data is autocorrelated, so the interval would be too narrow. The placebo test below guards against that, and permutation inference or TBR is on the roadmap.
+- **Decision:** run the same estimator on all 8,008 sets of 6 of the 16 regions, on the 56 days before the campaign (28 as baseline, 28 as a fake campaign), where the true effect is zero (`fct_geo_placebo`). The readout's interval is its estimate plus or minus 1.96 times the spread of those placebo estimates; its p-value is the share of placebo sets with an effect at least as large.
+- **Alternatives:** the textbook standard error (the previous version); autocorrelation-robust (Newey-West) standard errors; time-based regression; synthetic control.
+- **Why:** the textbook standard error treats days as independent; with drift they are not, and it is about a third too small. Placebo sets need no assumption about how the noise behaves: they use the real series, drift included, and every region takes part. Newey-West needs a choice of lag and still assumes a model of the noise. TBR and synthetic control are stronger with fewer regions, but harder to explain and to recompute in SQL.
+- **Impact:** lift +7.9% with interval +1.8% to +14.4% (independent days: +4.0% to +12.0%), p = 0.005. Cost per extra conversion EUR 113, interval EUR 66 to EUR 463 (previously reported as EUR 78 to EUR 210 on data without drift). The regional campaign stays STOP: its ROI is 0.12 / 0.50 / 0.86.
+- **Check:** `assert_geo_interval_calibrated`: applied to the placebo sets, the readout's interval may call at most 7% significant. Back on the independent-days interval, it calls about 20% and the test fails.
+- **Limit:** the placebo sets use 28 days of baseline, the real readout 56, so the interval is slightly conservative. The placebo distribution is computed from the same 16 regions in the same weeks; a structural change after the baseline period would not show in it.
 
 ### Placebo test on the pre-campaign period
 
-- **Decision:** run the same estimator on the two halves of the period before the campaign, where the true effect is zero.
+- **Decision:** run the same estimator on the two halves of the period before the campaign, where the true effect is zero, judged with the placebo standard error.
 - **Why:** if treatment and control were already drifting apart, the readout would mistake that drift for lift.
 - **Check:** `assert_geo_placebo_shows_no_effect`. Let the placebo read into the campaign period and it fails.
 
 ### Random regions, sized by simulation
 
-- **Decision:** treatment regions are a random draw of 6 of 16 states. Power comes from simulation: 500 random region sets, a known lift added, and the same estimator run.
+- **Decision:** treatment regions are a random draw of 6 of 16 states. Power comes from simulation on the pre-campaign series: the bar for significance from half of the 8,008 placebo sets, the false-alarm rate checked on the other half, then 500 random region sets with a known lift added.
 - **Alternatives:** matched markets; a power formula.
-- **Why:** a formula assumes things this data breaks (regions of very different sizes, shared shocks). Simulation uses the real pre-campaign series. A random draw is easy to defend; matched markets are more precise but harder to explain.
-- **Impact:** with 6 regions, a 28-day test detects a 7% lift 80% of the time, and a 14-day test needs 8%. A 4% lift is missed about half the time.
-- **Why 28 days of history, not 56:** the period before the campaign is 56 days long, and each simulated test needs history plus a fake test window of up to 28 days inside it. The real readout uses all 56 days, so it is slightly more precise than the power table suggests.
-- **Check:** `geo_power.py` asserts a false-alarm rate of at most 10%. With the interval removed (z = 0), that check fails.
+- **Why:** a formula assumes things this data breaks (regions of very different sizes, shared shocks, drift). A random draw is easy to defend; matched markets are more precise but harder to explain.
+- **Impact:** with 6 regions, a 28-day test detects a 10% lift 80% of the time, and a 14-day test needs 11%. The planted 8% is found 71% of the time. Judged by the independent-days interval, the same simulation would have promised 7%, at a false-alarm rate of 20%.
+- **Why 28 days of history, not 56:** the period before the campaign is 56 days long, and each simulated test needs history plus a fake test window of up to 28 days inside it.
+- **Check:** `geo_power.py` asserts at most 7% false alarms on the placebo sets it was not calibrated on. Deciding significance with the independent-days interval instead fails it (15% at 14 days, 20% at 28).
 
 ## Process
 

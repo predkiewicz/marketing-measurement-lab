@@ -19,7 +19,7 @@ Runs on your laptop with DuckDB: no account, no cloud, no cost. All data is synt
 | display | **TEST** | EUR 41.01 | 0.92 / 1.29 / 1.68 | 0.74 | 0.49x today | by day 90 | Pays back on average, but its last euros do not: test a lower budget |
 | affiliate | **TEST** | EUR 58.29 | 0.00 / 0.85 / 3.27 | n/a | n/a | none | Could be a winning or a losing channel; 48 injected clicks found |
 | paid_search | **STOP** | EUR 147.21 | 0.29 / 0.38 / 0.48 | 0.11 | n/a | none | Does not pay back even in the best case |
-| regional_campaign | **STOP** | EUR 113.24 | 0.27 / 0.50 / 0.73 | n/a | n/a | none | Works (+8% conversions) but does not pay back |
+| regional_campaign | **STOP** | EUR 112.93 | 0.12 / 0.50 / 0.86 | n/a | n/a | none | Works (+8% conversions) but does not pay back |
 
 ROI here is the 180-day gross profit of the customers a channel **added** (not the ones it claimed), per euro it cost. At 1.0 the channel has paid for itself within the horizon. Average ROI says whether a channel is worth having; marginal ROI, from its response curve, says whether the *next* euro is. The rule only speaks when the data allows it:
 
@@ -159,7 +159,7 @@ The cash view puts value and cost together: net cash per EUR 1,000 spent, by day
 | paid_social | -158 | +22 | +301 | +679 |
 | display | -252 | -151 | +40 | +294 |
 | affiliate | -493 | -434 | -297 | -148 |
-| regional_campaign | -733 | -686 | -602 | -496 |
+| regional_campaign | -732 | -685 | -601 | -495 |
 | paid_search | -796 | -763 | -694 | -619 |
 
 Paid social is back in the black within a month, so scaling it ties up little cash. Display needs three months. Of every EUR 1,000 in paid search, EUR 619 is still lost after six months.
@@ -202,33 +202,44 @@ The holdout, budget-step and geo tests count backend orders, so consent does not
 
 ### 8. Did the campaign cause it: geo test
 
-A campaign ran for 28 days in 6 of Germany's 16 states (Bayern, Berlin, Bremen, Mecklenburg-Vorpommern, Saarland, Sachsen); the other 10 states are the control. The generator planted a true lift of 8%.
+A campaign ran for 28 days in 6 of Germany's 16 states (Bayern, Berlin, Bremen, Mecklenburg-Vorpommern, Saarland, Sachsen); the other 10 states are the control. The generator planted a true lift of 8%. Like real regional data, each state drifts: a deviation today (local weather, an event, a stock-out) carries over into the next days, and each state has its own slow trend.
 
 ![Treatment and control regions, 7-day average, indexed to their own pre-test average](docs/geo_test.svg)
 
-| Readout | Estimate | 95% interval |
+`fct_geo_test` runs a difference-in-differences on the daily log ratio between treatment and control, each indexed to its own 56 days before the campaign, so the shared weekend dip and trend cancel out. The question is how wide the interval around it has to be.
+
+**The textbook standard error is too narrow here.** It treats every day as an independent draw. With drift, consecutive days repeat each other, so 28 days hold less information than they seem to. `fct_geo_placebo` measures the real noise directly: every possible set of 6 of the 16 states (8,008 sets) runs the same estimator on the days before the campaign, when nothing happened. The spread of those placebo estimates is what a real effect has to beat.
+
+| | Standard error | Placebo sets called significant (should be 5%) |
 |---|---:|---:|
-| Lift in conversions | +8.1% | +4.2% to +12.1% |
-| Incremental conversions | 724 | 390 to 1,047 |
-| Cost per incremental conversion (EUR 81,984 spend) | EUR 113 | EUR 78 to EUR 210 |
+| Days treated as independent | 0.019 | 20% |
+| Spread of the 8,008 placebo sets | 0.030 | 5% |
 
-`fct_geo_test` runs a difference-in-differences on the daily log ratio between treatment and control, each indexed to its own 56 days before the campaign, so the shared weekend dip and trend cancel out. The campaign works; at EUR 113 per extra customer against EUR 57 of 180-day gross profit, it does not pay.
+The readout therefore takes its interval from the placebo spread, and its p-value from the share of placebo sets with an effect at least as large:
 
-**How big must a test be?** `scripts/geo_power.py` answers that before any money is spent. It takes only the days before the campaign, picks 500 random sets of 6 treatment regions, adds a known lift and runs the same estimator. Each simulated test uses 28 days of history, because the fake test window has to fit inside the 56 days before the campaign; the real readout uses all 56, so it is slightly more precise than this table:
+| Readout | Estimate | 95% interval, placebo | 95% interval, independent days |
+|---|---:|---:|---:|
+| Lift in conversions | +7.9% (p = 0.005) | +1.8% to +14.4% | +4.0% to +12.0% |
+| Incremental conversions | 726 | 177 to 1,243 | |
+| Cost per incremental conversion (EUR 81,984 spend) | EUR 113 | EUR 66 to EUR 463 | |
+
+The campaign works: only 0.5% of the placebo sets show an effect this large. But how much it costs per extra customer is far less certain than the textbook interval suggests: anywhere from EUR 66 to EUR 463. Against EUR 57 of 180-day gross profit per customer, it does not pay even in the best case.
+
+**How big must a test be?** `scripts/geo_power.py` answers that before any money is spent, on the days before the campaign only. It calibrates the bar for significance on half of the 8,008 placebo sets and checks the false-alarm rate on the other half, then adds a known lift to 500 random region sets and counts how often the estimate clears the bar:
 
 | True lift | 14 days | 28 days |
 |---|---:|---:|
-| 0% (false alarms) | 5% | 6% |
-| 4% | 34% | 53% |
-| 6% | 60% | 77% |
-| 8% | 82% | 93% |
-| 10% | 93% | 99% |
+| 4% | 21% | 26% |
+| 6% | 38% | 49% |
+| 8% | 57% | 71% |
+| 10% | 77% | 90% |
+| 12% | 89% | 98% |
 
-With 6 regions, a 28-day test finds a 7% lift 80% of the time; a 14-day test needs 8%. The TEST decisions above need this kind of sizing before they start.
+With 6 regions, a 28-day test finds a 10% lift 80% of the time; a 14-day test needs 11%. The planted 8% would be found only 71% of the time: this campaign was lucky to be detected. On the independent-days interval the same tables would promise a 7% lift, at a 20% false-alarm rate. The TEST decisions above need this kind of sizing before they start.
 
 ## How it is checked
 
-`dbt build` runs 30 models and 62 tests. Besides the usual `unique` / `not_null` / `accepted_values` tests, fifteen tests guard the logic itself:
+`dbt build` runs 31 models and 65 tests. Besides the usual `unique` / `not_null` / `accepted_values` tests, sixteen tests guard the logic itself:
 
 - `assert_weights_sum_to_one`: every order hands out exactly 100% credit under each model.
 - `assert_revenue_reconciles`: attributed revenue equals the revenue of every order, `unattributed` included.
@@ -244,7 +255,8 @@ With 6 regions, a 28-day test finds a 7% lift 80% of the time; a 14-day test nee
 - `assert_scenario_budget_neutral`: the new budget equals the old one (recomputed from the books) minus what STOP channels freed plus what the allocation hands out.
 - `assert_consent_model_recovers_truth`: every paid channel's modelled count within 10% of the truth, closer than the consent-only count, and never more orders than exist.
 - `assert_geo_test_recovers_planted_lift`: the geo readout's interval contains the lift the generator planted.
-- `assert_geo_placebo_shows_no_effect`: the same estimator on the two halves of the pre-campaign period finds nothing.
+- `assert_geo_placebo_shows_no_effect`: the same estimator on the two halves of the pre-campaign period finds nothing, judged with the placebo standard error.
+- `assert_geo_interval_calibrated`: applied to the 8,008 placebo sets, the readout's interval calls at most 7% of them significant.
 
 A test only counts once it has been seen failing, so each one was run against a deliberately broken version:
 
@@ -262,7 +274,8 @@ A test only counts once it has been seen failing, so each one was run against a 
 - A plan that forgets to add the allocated money fails the budget test.
 - One overall consent rate instead of one per landing channel fails the consent test for display (+11%) and affiliate (+13%).
 - Swapping treatment and control fails the planted-lift test; letting the placebo read into the campaign period fails the placebo test.
-- `geo_power.py` checks itself: with the interval removed (z = 0) its false-alarm check fails.
+- Putting the readout back on the independent-days interval fails the calibration test (about 20% of placebo sets called significant).
+- `geo_power.py` checks itself on placebo sets it was not calibrated on; deciding significance with the independent-days interval instead fails that check.
 
 Two tests could not fail in their first version, and the deliberate break is what showed it: the CAC reconciliation read the commission from the model it was checking, and the budget plan copied its total cost instead of adding up what it moved. Both now recompute what they check.
 
@@ -338,7 +351,7 @@ Settings live in `dbt_project.yml` vars. Goals and decision rules: gross margin 
 - [x] Cash view per channel: net cash per EUR 1,000 by day since acquisition
 - [x] Consent-aware counts: uneven consent loss by device and channel, its effect on CAC and decisions, and modelled recovery
 - [x] Lifetime value beyond 180 days: censored retention, shared decay, 36-month discounted value per channel
-- [ ] Stronger geo inference: autocorrelated and uneven regional data, where the simple interval becomes too narrow; fix with permutation inference or time-based regression
+- [x] Stronger geo inference: drifting regional data, placebo-in-space interval and p-value, placebo-calibrated power
 - [ ] Agent skills that work on this repo: a Tag Manager container audit (consent settings, duplicate pixels, dead triggers), a tracking-plan writer, a metric-definition review; each with its own test cases
 
 ## Working with AI agents

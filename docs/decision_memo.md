@@ -43,7 +43,7 @@ For each channel, one number: the 180-day gross profit of the customers it **add
 | Display | 64 | EUR 41.01 | EUR 53.08 | 0.92 / 1.29 / 1.68 | EUR 0.74 | by day 90 |
 | Affiliate | 11 | EUR 58.29 | EUR 49.58 | 0.00 / 0.85 / 3.27 | not measured | no |
 | Paid search | 38 | EUR 147.21 | EUR 56.09 | 0.29 / 0.38 / 0.48 | EUR 0.11 | no |
-| Regional campaign | n/a | EUR 113.24 | EUR 57.02 | 0.27 / 0.50 / 0.73 | not measured | no |
+| Regional campaign | n/a | EUR 112.93 | EUR 57.02 | 0.12 / 0.50 / 0.86 | not measured | no |
 
 ![What the next euro returns at each spend level](response_curves.svg)
 
@@ -55,7 +55,7 @@ For each channel, one number: the 180-day gross profit of the customers it **add
 
 **Display: test a lower budget.** On average it pays back (ROI 1.29, by day 90), but the average hides its last euros, which return only EUR 0.74. Its response curve puts the profitable budget at about half of today's. In the pessimistic case it does not pay back at all, so we test the lower budget in some regions before cutting everywhere.
 
-**Regional campaign: stop.** It works: conversions in the campaign regions rose by 8% (4% to 12%). But each extra customer cost EUR 113, and a customer brings EUR 57 of gross profit in 180 days. Each EUR 81,984 run returns about EUR 41,000.
+**Regional campaign: stop.** It works: conversions in the campaign regions rose by 8%, an effect only 0.5% of comparable region sets show by chance. But how much each extra customer cost is uncertain, somewhere between EUR 66 and EUR 463 (best guess EUR 113), and a customer brings EUR 57 of gross profit in 180 days. Even the best case does not pay back. Each EUR 81,984 run returns about EUR 41,000.
 
 ## What the plan does to the goals
 
