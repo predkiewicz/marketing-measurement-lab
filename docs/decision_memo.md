@@ -96,4 +96,4 @@ The tracking is cleaned before any of this: 29 duplicate purchase events (2.2% o
 | 4 | Regional campaign | Do not repeat in this form | VP Marketing |
 | 5 | Reporting | Report ROI on added customers next to last-click ROAS, on consent-modelled counts, and base budget decisions on it | VP Marketing, CFO |
 
-How these numbers were produced and why each method was chosen: [methodology.md](methodology.md).
+How these numbers were produced and why each method was chosen: [methodology.md](methodology.md). Which of these analyses each kind of decision actually needs: [decision_guide.md](decision_guide.md).

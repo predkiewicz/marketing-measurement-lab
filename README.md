@@ -7,7 +7,10 @@ Runs on your laptop with DuckDB: no account, no cloud, no cost. All data is synt
 **Start here**
 - [Decision memo](docs/decision_memo.md): the decisions and what they do to the goals, for the people who decide on budget.
 - [Methodology](docs/methodology.md): why each method was chosen, what else was considered, how much each choice moves the numbers, and which decisions survive other assumptions.
+- [Which analysis for which decision](docs/decision_guide.md): not every decision needs every model. A table of decisions (daily optimisation, finance checks, cash flow, budget shifts, planning, business cases, test / scale / stop) and the calculations each one needs, can skip, and costs.
 - [Recreate it](#recreate-it): from a fresh clone to every table and chart in about five minutes.
+
+**Not every decision needs every model.** This lab runs all of them because it is built to show and test each one. Daily optimisation inside a channel runs on clean tracking and platform trends; finance checks on blended CAC and reconciled numbers; only budget shifts, scaling and business cases need holdouts, response curves or geo tests. The [decision guide](docs/decision_guide.md) maps each decision to the calculations it needs.
 
 ## The decisions
 
@@ -331,7 +334,7 @@ Different data: `python scripts/generate_data.py --users 20000 --seed 1`, then s
 scripts/generate_data.py   synthetic touchpoints, orders, repeat orders, ad spend, consent, holdout, budget-step and geo tests (stdlib only)
 scripts/geo_power.py       simulation-based power for the geo test (stdlib only)
 scripts/report.py          prints every result table, draws the three charts in docs/
-docs/                      decision memo, methodology, charts
+docs/                      decision memo, decision guide, methodology, charts
 models/staging/            cleaned sources, duplicates removed, consent-only touchpoints
 macros/                    attribution and decision rule, shared by the full and the consent-only views
 models/qa/                 tracking checks: duplicate orders, click injection
