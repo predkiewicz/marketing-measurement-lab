@@ -27,7 +27,7 @@ ROI here is the 180-day gross profit of the customers a channel **added** (not t
 - **STOP**: ROI below 1.0 even at the optimistic end.
 - **TEST**: everything else. The data cannot yet back a scale or a stop, so the next step is a sharper test.
 
-**What the decisions do to the goals.** Stopping paid search frees EUR 14,127 and loses only the 96 customers it actually added. Paid social takes as much of it as still pays back: its response curve says the next euro stops paying back at 1.48 times today's spend, so it gets EUR 7,137. The other EUR 6,990 is not spent, because spending it would lower profit.
+**What the decisions do to the goals.** Stopping paid search frees EUR 14,127 and loses only the 96 customers it actually added. The freed money goes to the SCALE channels so that the next euro earns the same everywhere (equal marginal ROI), and no channel beyond the spend where its next euro stops paying back. Here paid social is the only SCALE channel: its response curve caps it at 1.48 times today's spend, so it gets EUR 7,137. The other EUR 6,990 is not spent, because spending it would lower profit.
 
 | Plan | Cost | Customers | Blended CAC | 180-day gross profit | Profit after marketing | Goal: CAC under EUR 26 |
 |---|---:|---:|---:|---:|---:|---|
@@ -61,7 +61,8 @@ flowchart LR
     geotest --> dec
     curves --> dec
     qa --> dec
-    dec --> plan[fct_budget_scenario]
+    dec --> alloc[fct_budget_allocation] --> plan[fct_budget_scenario]
+    dec --> plan
     dec --> cash[fct_channel_cashflow]
     raw --> power[geo_power.py]
 ```
@@ -193,7 +194,7 @@ With 6 regions, a 28-day test finds a 7% lift 80% of the time; a 14-day test nee
 
 ## How it is checked
 
-`dbt build` runs 22 models and 50 tests. Besides the usual `unique` / `not_null` / `accepted_values` tests, twelve tests guard the logic itself:
+`dbt build` runs 23 models and 54 tests. Besides the usual `unique` / `not_null` / `accepted_values` tests, thirteen tests guard the logic itself:
 
 - `assert_weights_sum_to_one`: every order hands out exactly 100% credit under each model.
 - `assert_revenue_reconciles`: attributed revenue equals the revenue of every order, `unattributed` included.
@@ -204,7 +205,8 @@ With 6 regions, a 28-day test finds a 7% lift 80% of the time; a 14-day test nee
 - `assert_value_never_decreases`: cumulative gross profit only grows with time.
 - `assert_every_paid_channel_decided`: every channel that costs money gets a decision, and every decision a cash line.
 - `assert_cashflow_matches_roi`: the cash line ends where the ROI says (net cash at the horizon = 1,000 x (ROI - 1)).
-- `assert_scenario_budget_neutral`: the new budget equals the old one minus what STOP channels freed plus what SCALE channels may take up to their profitable spend, recomputed independently.
+- `assert_allocation_optimal`: no euro of the freed budget could be moved to earn more. Checked condition by condition: nothing beyond the freed budget, no funded channel below a marginal ROI of 1, funded channels end at the same marginal ROI, no unfunded channel with a better next euro, no money left over while a channel below its cap still earns more than 1.
+- `assert_scenario_budget_neutral`: the new budget equals the old one (recomputed from the books) minus what STOP channels freed plus what the allocation hands out.
 - `assert_geo_test_recovers_planted_lift`: the geo readout's interval contains the lift the generator planted.
 - `assert_geo_placebo_shows_no_effect`: the same estimator on the two halves of the pre-campaign period finds nothing.
 
@@ -219,13 +221,14 @@ A test only counts once it has been seen failing, so each one was run against a 
 - Reading every cash day from the first order only fails the cash test for all 5 decided channels.
 - Dropping display from the decision model fails the every-channel test; allocating the freed budget with the wrong denominator fails the budget test.
 - Fitting the curves on raw conversions, without subtracting the switched-off regions' baseline, fails the elasticity test for all 3 channels.
-- Dropping the profitable-spend cap from the plan (moving all freed budget to social) fails the budget test.
+- Choosing the least-spending allocation instead of the best one fails the optimality test. At 75% gross margin, where paid social and display are both SCALE, the previous split by today's cost fails it too: it fills display to its cap and leaves EUR 2,832 unspent while social's next euro still earns 1.46.
+- A plan that forgets to add the allocated money fails the budget test.
 - Swapping treatment and control fails the planted-lift test; letting the placebo read into the campaign period fails the placebo test.
 - `geo_power.py` checks itself: with the interval removed (z = 0) its false-alarm check fails.
 
 Two tests could not fail in their first version, and the deliberate break is what showed it: the CAC reconciliation read the commission from the model it was checking, and the budget plan copied its total cost instead of adding up what it moved. Both now recompute what they check.
 
-GitHub Actions runs the generator, the power check, the full build and the report on every push.
+GitHub Actions runs the generator, the power check, the full build at 75% gross margin (two SCALE channels, so the allocation test has something to decide), the full build at default settings and the report on every push.
 
 ## Recreate it
 
@@ -280,7 +283,7 @@ scripts/report.py          prints every result table, draws the three charts in 
 docs/                      decision memo, methodology, charts
 models/staging/            cleaned sources, duplicates removed
 models/qa/                 tracking checks: duplicate orders, click injection
-models/marts/              attribution, ROAS, CAC, incrementality, response curves, customer value, geo test, decisions, budget plan
+models/marts/              attribution, ROAS, CAC, incrementality, response curves, customer value, geo test, decisions, budget allocation and plan
 tests/                     logic tests that must fail when the logic breaks
 ```
 
@@ -292,7 +295,7 @@ Settings live in `dbt_project.yml` vars. Goals and decision rules: gross margin 
 - [x] Customer value and payback: repeat purchases by acquisition channel, 180-day gross profit, payback day
 - [x] Decisions per channel and the budget plan they imply
 - [x] Response curves from budget-step tests: marginal ROI and profitable spend per channel
-- [ ] Optimal allocation across several SCALE channels (equal marginal ROI) instead of a split by today's cost
+- [x] Optimal allocation across SCALE channels: equal marginal ROI, capped at each channel's profitable spend
 - [x] Cash view per channel: net cash per EUR 1,000 by day since acquisition
 - [ ] Consent-aware counts: simulate consent opt-outs that differ by device and channel, show how they distort ROAS, and how modelled conversions fill the gap
 - [ ] Stronger geo inference: autocorrelated and uneven regional data, where the simple interval becomes too narrow; fix with permutation inference or time-based regression

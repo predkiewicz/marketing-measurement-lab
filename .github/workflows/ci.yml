@@ -10,5 +10,7 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python scripts/generate_data.py
       - run: python scripts/geo_power.py
+      # two SCALE channels compete for budget only at a higher margin: keeps the allocation test meaningful
+      - run: dbt build --profiles-dir . --target duckdb --vars '{gross_margin: 0.75}'
       - run: dbt build --profiles-dir . --target duckdb
       - run: python scripts/report.py

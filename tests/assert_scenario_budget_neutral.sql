@@ -1,23 +1,25 @@
--- The plan moves money, it does not create it: the new budget equals the old one minus what STOP
--- channels freed plus what SCALE channels received, recomputed here from the decisions and the
--- profitable-spend cap. Returns a row on mismatch.
-with d as (
-    select * from {{ ref('fct_channel_decisions') }} where channel != 'regional_campaign'
+-- The plan moves money, it does not create it: new budget = old budget (recomputed from the books:
+-- ad spend plus affiliate commission) - what STOP channels freed + what the allocation hands out.
+-- Whether the allocation itself is right is assert_allocation_optimal's job. Returns a row on mismatch.
+with books as (
+    select
+        (select sum(spend_eur) from {{ ref('raw_ad_spend') }})
+          + (select sum(revenue_eur * last_click_weight) * {{ var("affiliate_fee") }}
+             from {{ ref('fct_attribution') }} where channel = 'affiliate') as cost_eur
 ),
 
 freed as (
-    select coalesce(sum(cost_eur), 0) as eur from d where decision = 'STOP'
+    select coalesce(sum(cost_eur), 0) as eur
+    from {{ ref('fct_channel_decisions') }}
+    where decision = 'STOP' and channel != 'regional_campaign'
 ),
 
 received as (
-    select coalesce(sum(least(
-        (select eur from freed) * cost_eur / (select sum(cost_eur) from d where decision = 'SCALE'),
-        cost_eur * (profitable_spend_multiplier - 1))), 0) as eur
-    from d where decision = 'SCALE'
+    select coalesce(sum(allocated_eur), 0) as eur from {{ ref('fct_budget_allocation') }}
 )
 
-select *
-from {{ ref('fct_budget_scenario') }}
-where sort = 2
-    and abs(cost_eur - ((select cost_eur from {{ ref('fct_budget_scenario') }} where sort = 1)
-        - (select eur from freed) + (select eur from received))) > 0.01
+select p.plan, p.cost_eur
+from {{ ref('fct_budget_scenario') }} as p
+cross join books as b
+where (p.sort = 1 and abs(p.cost_eur - b.cost_eur) > 0.01)
+   or (p.sort = 2 and abs(p.cost_eur - (b.cost_eur - (select eur from freed) + (select eur from received))) > 0.01)

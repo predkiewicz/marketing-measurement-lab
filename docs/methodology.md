@@ -144,11 +144,20 @@ Every method in this repo is a choice, and every choice moves the numbers. This 
 
 ### Budget plan: scale only as far as the next euro pays back
 
-- **Decision:** STOP channels lose their cost and their *added* customers only. SCALE channels take the freed budget in proportion to today's cost, each up to its profitable spend; added customers follow the curve. Budget beyond that is not spent. TEST channels stay as they are.
-- **Alternatives:** spend the whole freed budget at a flat premium (the previous version); equalise marginal ROI across all SCALE channels.
-- **Why:** money a channel cannot turn into profit is better not spent. With one SCALE channel, the split rule and the optimum are the same; with several, equalising marginal ROI would allocate better (on the roadmap).
-- **Impact:** budget EUR 30,475 instead of EUR 37,464, 1,368 instead of 1,339 customers, blended CAC EUR 22.27, profit after marketing EUR 48,070 instead of EUR 38,889. The previous flat-premium plan spent the full budget and promised 1,504 customers and EUR 49,318 profit after marketing: 136 customers that the curve says the extra money cannot buy.
-- **Check:** `assert_scenario_budget_neutral` recomputes the new budget from the decisions and the profitable-spend cap. Dropping the cap fails it. Its first version copied the total cost instead of adding up what it moved and could not fail.
+- **Decision:** STOP channels lose their cost and their *added* customers only. TEST channels stay as they are. The freed budget goes to the SCALE channels; added customers follow each channel's curve. Budget that no channel can use profitably is not spent.
+- **Alternatives:** spend the whole freed budget at a flat premium (an earlier version); spend it all, whatever the return.
+- **Why:** money a channel cannot turn into profit is better not spent.
+- **Impact:** budget EUR 30,475 instead of EUR 37,464, 1,368 instead of 1,339 customers, blended CAC EUR 22.27, profit after marketing EUR 48,070 instead of EUR 38,889. The earlier flat-premium plan spent the full budget and promised 1,504 customers and EUR 49,318 profit after marketing: 136 customers that the curve says the extra money cannot buy.
+- **Check:** `assert_scenario_budget_neutral`: new budget = old budget from the books - freed + allocated. A plan that forgets the allocation fails it. Its first version copied the total cost instead of adding up what it moved and could not fail.
+
+### Allocation across SCALE channels: equal marginal ROI
+
+- **Decision:** split the freed budget so that the next euro earns the same in every funded channel. On the power curve, a target marginal ROI fixes each channel's spend: today x (elasticity x ROI / target) ^ (1 / (1 - elasticity)), kept between today's spend and the profitable spend. `fct_budget_allocation` searches 4,000 targets between 1 and the best marginal ROI today and takes the lowest one whose spend fits the budget.
+- **Alternatives:** split in proportion to today's cost (the previous version); give everything to the channel with the best average ROI; a solver.
+- **Why:** as long as one channel's next euro earns more than another's, moving a euro raises profit, so the best split is where they are equal. A split by cost ignores the curves; "best average ROI first" ignores that the best channel gets worse as it grows. A grid in plain SQL needs no solver, and its error (EUR 7 left over at 75% margin) is far below the uncertainty of the curves.
+- **Impact:** with the default data, paid social is the only SCALE channel, so both splits give the same plan. At 75% gross margin, display is SCALE too: the split by cost fills display to its cap (EUR 2,026), gives social EUR 9,269 and leaves EUR 2,832 unspent, for EUR 88,458 profit after marketing. The equal-marginal split gives social EUR 14,120 and display nothing, because display's next euro (1.10) never beats social's (still 1.37 after the extra budget): EUR 90,356, about EUR 1,900 more from the same money.
+- **Check:** `assert_allocation_optimal` checks the conditions of an optimum on the result. CI also builds at 75% margin, where two channels compete; there the previous split fails it.
+- **Limit:** the allocation is only as good as the curves. With their wide intervals, the split is a starting point for the step-wise plan, not a final budget.
 
 ### Which decisions survive other assumptions
 

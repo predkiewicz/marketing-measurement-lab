@@ -94,6 +94,14 @@ models:
       - name: net_cash_per_1000_eur
         data_tests: [not_null]
 
+  - name: fct_budget_allocation
+    description: Freed budget split across SCALE channels at equal marginal ROI, each capped at its profitable spend.
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+      - name: allocated_eur
+        data_tests: [not_null]
+
   - name: fct_budget_scenario
     description: The always-on budget before and after applying the decisions.
     columns:

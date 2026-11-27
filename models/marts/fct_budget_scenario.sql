@@ -1,8 +1,7 @@
 -- What the decisions do to the always-on budget (attribution period).
 --   STOP channels lose their cost and only their ADDED customers.
---   SCALE channels take the freed budget, but only up to their profitable spend (where the next euro
---   stops paying back, from the response curve). Budget beyond that is not spent: spending it would
---   lower profit. Added customers follow the curve: today x multiplier ^ elasticity.
+--   SCALE channels take the freed budget as fct_budget_allocation splits it: equal marginal ROI,
+--   each channel at most up to its profitable spend. Money no channel can use profitably is not spent.
 --   TEST channels stay as they are. The regional campaign is a separate budget, not part of this plan.
 with d as (
     select * from {{ ref('fct_channel_decisions') }} where channel != 'regional_campaign'
@@ -19,29 +18,16 @@ moves as (
     select
         sum(case when decision = 'STOP' then cost_eur else 0 end) as freed_eur,
         sum(case when decision = 'STOP' then customers_incremental else 0 end) as customers_lost,
-        sum(case when decision = 'STOP' then customers_incremental * gross_profit_per_customer_180d else 0 end) as profit_lost,
-        sum(case when decision = 'SCALE' then cost_eur else 0 end) as scale_cost
+        sum(case when decision = 'STOP' then customers_incremental * gross_profit_per_customer_180d else 0 end) as profit_lost
     from d
-),
-
-allocation as (
-    -- ponytail: freed budget split in proportion to today's cost, each channel capped at its profitable
-    -- spend; with several SCALE channels, equalising marginal ROI would allocate better
-    select
-        d.*,
-        least(m.freed_eur * d.cost_eur / m.scale_cost, d.cost_eur * (d.profitable_spend_multiplier - 1)) as allocated_eur
-    from d
-    cross join moves as m
-    where d.decision = 'SCALE'
 ),
 
 gains as (
     select
         sum(allocated_eur) as allocated_eur,
-        sum(customers_incremental * (power(1 + allocated_eur / cost_eur, elasticity) - 1)) as customers_gained,
-        sum(customers_incremental * (power(1 + allocated_eur / cost_eur, elasticity) - 1)
-            * gross_profit_per_customer_180d) as profit_gained
-    from allocation
+        sum(customers_gained) as customers_gained,
+        sum(profit_gained) as profit_gained
+    from {{ ref('fct_budget_allocation') }}
 ),
 
 plans as (
