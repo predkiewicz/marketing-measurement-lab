@@ -6,7 +6,7 @@ Every method in this repo is a choice, and every choice moves the numbers. This 
 
 ### Synthetic, seeded data with planted problems
 
-- **Decision:** generate all data with `scripts/generate_data.py` (Python standard library, fixed seed). Plant known problems and known effects: duplicate purchase events, uneven consent loss, affiliate click injection, orders with no touchpoint, repeat purchases that depend on the acquisition channel, a known incrementality and a known response curve per paid channel, and an 8% lift in the geo test.
+- **Decision:** generate all data with `scripts/generate_data.py` (Python standard library, fixed seed). Plant known problems and known effects: duplicate purchase events, uneven consent loss, affiliate click injection, orders with no touchpoint, repeat purchases that depend on the acquisition channel and fade after six months, a known incrementality and a known response curve per paid channel, and an 8% lift in the geo test.
 - **Alternatives:** a public dataset (the GA4 sample e-commerce data); anonymised real data.
 - **Why:** with real data the true answer is unknown, so nobody can tell whether a method works. Planted problems give a ground truth: the QA models must find them and the geo readout must recover the 8%. A public repo also cannot hold real company data.
 - **Impact:** the methods are validated against a known answer. The data is cleaner than reality. For example, the gap between injected clicks (2 to 8 seconds) and real clicks (at least 4.5 hours) is wider than it would be in practice.
@@ -114,6 +114,15 @@ Every method in this repo is a choice, and every choice moves the numbers. This 
 - **Why:** two channels with the same 180-day ROI can need very different amounts of cash in between. A channel that pays back in a month can be scaled from running revenue; one that needs six months has to be financed.
 - **Impact:** paid social is back in the black by day 30, display by day 90. Paid search still has EUR 619 of every EUR 1,000 under water at day 180.
 - **Check:** `assert_cashflow_matches_roi`: the cash line ends exactly where the ROI says.
+
+### Lifetime value beyond 180 days
+
+- **Decision:** count repeat orders per customer by month since the first order, but in each month only customers observed that long by the analysis date (`observed_until`). Fit one decay for all channels after month 6: ln(orders per customer in month t / months-1-6 level) = (t - 6) x ln(decay), using months with at least 300 customers observed. Lifetime value = observed 180-day gross profit + the channel's own monthly level x the decayed months up to 36, discounted at 10% a year.
+- **Alternatives:** a decay per channel; BG/NBD and Gamma-Gamma models; a fixed multiple of first-order value.
+- **Why:** after 180 days there are only four usable months, and a fifth of the customers by month 10. Four decay rates from four noisy points each would be guesses; one shared rate uses all customers. What differs between channels, how often their customers buy, is already measured in the 180-day value. BG/NBD models need per-customer purchase histories over a longer window than this data has, and their assumptions are harder to explain to a CFO than one decay rate.
+- **Impact:** decay 0.82 (0.74 to 0.91). Lifetime value EUR 63 (affiliate) to EUR 81 (paid social). No decision changes; affiliate's lifetime ROI is 1.09 against 0.85 over 180 days.
+- **Check:** `assert_ltv_recovers_planted_decay`. Counting every customer in every month, without censoring, gives a decay of 0.62 and fails it: recent cohorts look like they stopped buying, when they have only had less time.
+- **Limit:** the decay interval is wide (t value for 3 degrees of freedom), and the projection assumes the fade continues at the same rate for three years. That is why decisions stay on the 180-day goal and lifetime value is shown next to it, not instead of it.
 
 ## Decisions
 

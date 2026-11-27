@@ -54,6 +54,8 @@ flowchart LR
     roas --> cac[fct_channel_cac]
     incr --> cac --> blended[fct_blended_cac]
     stg --> value[fct_customer_value] --> chval[fct_channel_value]
+    stg --> ret[fct_retention_monthly] --> decay[fct_ltv_decay] --> life[fct_channel_lifetime]
+    dec --> life
     attr --> chval
     raw --> geo[fct_geo_daily] --> geotest[fct_geo_test]
     cac --> dec[fct_channel_decisions]
@@ -162,6 +164,18 @@ The cash view puts value and cost together: net cash per EUR 1,000 spent, by day
 
 Paid social is back in the black within a month, so scaling it ties up little cash. Display needs three months. Of every EUR 1,000 in paid search, EUR 619 is still lost after six months.
 
+**Beyond 180 days: lifetime value.** Customers keep buying after six months, less and less. Each month, only customers observed that long count (the analysis date is 27 November 2026, so the January cohort has 10 months of history, March 8). After month 6, repeat buying fades by a shared 18% per month (decay 0.82, interval 0.74 to 0.91; planted: 0.85). Projected to 36 months and discounted at 10% a year:
+
+| Channel | Gross profit, 180 days | Lifetime value (interval) | ROI, 180 days | ROI, lifetime | Paid back in month |
+|---|---:|---:|---:|---:|---:|
+| paid_social | EUR 60.55 | EUR 81 (74 to 102) | 1.68 | 2.25 | 1 |
+| display | EUR 53.08 | EUR 68 (63 to 84) | 1.29 | 1.66 | 3 |
+| affiliate | EUR 49.58 | EUR 63 (58 to 77) | 0.85 | 1.09 | 11 |
+| regional_campaign | EUR 57.02 | EUR 75 (69 to 94) | 0.50 | 0.66 | never |
+| paid_search | EUR 56.09 | EUR 74 (67 to 92) | 0.38 | 0.50 | never |
+
+The decisions stay on the 180-day goal, because that is cash the business has, while the lifetime value is a projection. The lifetime view changes none of them: paid search and the regional campaign do not pay back even over three years. Affiliate is where the two views part: over a lifetime it might pay back (in month 11, on an incrementality estimate that is itself uncertain), within the cash goal it does not. That is one more reason its decision is TEST, not STOP.
+
 ### 6. Is the data telling the truth: tracking QA
 
 | Check | What it finds | In this data | Effect on the decision |
@@ -214,7 +228,7 @@ With 6 regions, a 28-day test finds a 7% lift 80% of the time; a 14-day test nee
 
 ## How it is checked
 
-`dbt build` runs 27 models and 57 tests. Besides the usual `unique` / `not_null` / `accepted_values` tests, fourteen tests guard the logic itself:
+`dbt build` runs 30 models and 62 tests. Besides the usual `unique` / `not_null` / `accepted_values` tests, fifteen tests guard the logic itself:
 
 - `assert_weights_sum_to_one`: every order hands out exactly 100% credit under each model.
 - `assert_revenue_reconciles`: attributed revenue equals the revenue of every order, `unattributed` included.
@@ -223,6 +237,7 @@ With 6 regions, a 28-day test finds a 7% lift 80% of the time; a 14-day test nee
 - `assert_cac_reconciles`: blended CAC rests on every customer and every euro of cost, the affiliate commission recomputed independently.
 - `assert_value_reconciles`: total customer value equals margin times all first and repeat orders within the horizon, recomputed from the sources.
 - `assert_value_never_decreases`: cumulative gross profit only grows with time.
+- `assert_ltv_recovers_planted_decay`: the fitted decay interval contains the decay the generator planted.
 - `assert_every_paid_channel_decided`: every channel that costs money gets a decision, and every decision a cash line.
 - `assert_cashflow_matches_roi`: the cash line ends where the ROI says (net cash at the horizon = 1,000 x (ROI - 1)).
 - `assert_allocation_optimal`: no euro of the freed budget could be moved to earn more. Checked condition by condition: nothing beyond the freed budget, no funded channel below a marginal ROI of 1, funded channels end at the same marginal ROI, no unfunded channel with a better next euro, no money left over while a channel below its cap still earns more than 1.
@@ -239,6 +254,7 @@ A test only counts once it has been seen failing, so each one was run against a 
 - Treating every attributed conversion as incremental (what attribution implicitly does) makes the incrementality test fail for all 4 channels.
 - Dropping the affiliate commission from cost makes the CAC reconciliation fail.
 - Dropping the `coalesce` for customers without repeat orders makes the value reconciliation fail; counting only same-day repeat orders fails both value tests.
+- Counting every customer in every month, without checking how long each has been observed, makes recent cohorts look like they stopped buying: decay 0.62 instead of 0.82, and the decay test fails.
 - Reading every cash day from the first order only fails the cash test for all 5 decided channels.
 - Dropping display from the decision model fails the every-channel test; allocating the freed budget with the wrong denominator fails the budget test.
 - Fitting the curves on raw conversions, without subtracting the switched-off regions' baseline, fails the elasticity test for all 3 channels.
@@ -306,11 +322,11 @@ docs/                      decision memo, methodology, charts
 models/staging/            cleaned sources, duplicates removed, consent-only touchpoints
 macros/                    attribution and decision rule, shared by the full and the consent-only views
 models/qa/                 tracking checks: duplicate orders, click injection
-models/marts/              attribution, ROAS, CAC, incrementality, response curves, customer value, geo test, decisions, budget allocation and plan
+models/marts/              attribution, ROAS, CAC, incrementality, response curves, customer and lifetime value, consent, geo test, decisions, budget allocation and plan
 tests/                     logic tests that must fail when the logic breaks
 ```
 
-Settings live in `dbt_project.yml` vars. Goals and decision rules: gross margin (50%), value horizon and payback goal (180 days), blended CAC goal (EUR 26), stop threshold (ROI 1.0), highest spend level the curves may plan for (3x today). Measurement: lookback window (30 days), click-injection threshold (10 seconds), affiliate fee (10%), incrementality verdict line (0.5), geo test start (1 June 2026) and interval (95%).
+Settings live in `dbt_project.yml` vars. Goals and decision rules: gross margin (50%), value horizon and payback goal (180 days), lifetime horizon (36 months) and discount rate (10% a year), analysis date (27 November 2026), blended CAC goal (EUR 26), stop threshold (ROI 1.0), highest spend level the curves may plan for (3x today). Measurement: lookback window (30 days), click-injection threshold (10 seconds), affiliate fee (10%), incrementality verdict line (0.5), geo test start (1 June 2026) and interval (95%).
 
 ## Roadmap
 
@@ -321,7 +337,7 @@ Settings live in `dbt_project.yml` vars. Goals and decision rules: gross margin 
 - [x] Optimal allocation across SCALE channels: equal marginal ROI, capped at each channel's profitable spend
 - [x] Cash view per channel: net cash per EUR 1,000 by day since acquisition
 - [x] Consent-aware counts: uneven consent loss by device and channel, its effect on CAC and decisions, and modelled recovery
-- [ ] Customer lifetime value beyond 180 days: a retention curve per channel, extrapolated with its uncertainty
+- [x] Lifetime value beyond 180 days: censored retention, shared decay, 36-month discounted value per channel
 - [ ] Stronger geo inference: autocorrelated and uneven regional data, where the simple interval becomes too narrow; fix with permutation inference or time-based regression
 - [ ] Agent skills that work on this repo: a Tag Manager container audit (consent settings, duplicate pixels, dead triggers), a tracking-plan writer, a metric-definition review; each with its own test cases
 

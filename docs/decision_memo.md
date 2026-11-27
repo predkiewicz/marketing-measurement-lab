@@ -81,6 +81,8 @@ Display's lower budget is not in these numbers yet: if its test confirms the cur
 
 The tracking is cleaned before any of this: 29 duplicate purchase events (2.2% of revenue overstated) are removed, and injected affiliate clicks get no credit.
 
+**Lifetime value.** Customers keep buying after 180 days, at a fading rate. Over three years, a paid social customer is worth about EUR 81 of gross profit and a paid search customer about EUR 74. That changes no decision: paid search and the regional campaign do not pay back even over three years. Affiliate might, in month 11, which misses our 180-day cash goal; another reason to test it before deciding.
+
 **Consent.** About 40% of visitors decline tracking, and on paid social (mostly iPhone traffic) more than half. Read from consent-only tracking, paid social would show half its customers, a CAC of EUR 60 instead of EUR 33, and a TEST instead of a SCALE. These numbers use consent-modelled counts, which come within 7% of the truth for every channel, and the experiments behind them count shop orders, which consent does not affect.
 
 ## Decisions needed

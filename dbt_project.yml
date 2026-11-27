@@ -21,9 +21,13 @@ vars:
   goal_blended_cac: 26          # blended CAC target for the budget plan, EUR
   stop_max_roi: 1.0             # STOP: ROI below this even in the best case. SCALE: the next euro still pays back
                                 # (marginal ROI >= 1, from the response curve) and the worst case pays back too
+  observed_until: "2026-11-27"  # analysis date: orders after it have not happened yet
+  ltv_months: 36                # lifetime value horizon
+  discount_rate: 0.10           # yearly, for future gross profit in lifetime value
   curve_max_multiplier: 3       # never plan beyond the highest spend level the budget-step tests covered
   curve_ci_t: 2.776             # 95% t value for the curve fit: 6 spend levels, 2 parameters, 4 degrees of freedom
   incrementality_threshold: 0.5  # verdict line: interval wholly below = mostly claims existing demand, wholly above = mostly incremental
+  ltv_planted_decay: 0.85      # planted by generate_data.py (LATE_DECAY); only the tests use it
   curve_planted_elasticity:  # planted by generate_data.py (CURVE_ELASTICITY); only the tests use it
     paid_social: 0.70
     display: 0.60

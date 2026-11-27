@@ -28,6 +28,14 @@ QUERIES = {
         from fct_budget_scenario order by sort""",
     "Net cash per EUR 1,000 spent, by day since acquisition (incremental customers)": """
         pivot fct_channel_cashflow on day in (0, 30, 60, 90, 120, 150, 180) using sum(net_cash_per_1000_eur) group by channel order by channel""",
+    "Lifetime value (36 months, discounted) next to the 180-day view": """
+        select channel, decision, gross_profit_180d, ltv, ltv_low, ltv_high, cac_incremental,
+               roi_180, roi_lifetime, payback_month
+        from fct_channel_lifetime order by roi_lifetime desc""",
+    "Repeat buying by month since the first order (shared decay after month 6)": """
+        select r.month, r.customers_observed, r.repeat_orders, round(r.orders_per_customer, 3) as orders_per_customer,
+               d.decay, d.decay_low, d.decay_high
+        from fct_retention_monthly as r cross join fct_ltv_decay as d order by r.month""",
     "Gross profit per customer by day since first order": """
         select * exclude (customers) from fct_channel_value order by gross_profit_d180 desc""",
     "ROAS per channel, last click vs position-based": """

@@ -100,6 +100,21 @@ models:
       - name: channel
         data_tests: [unique, not_null]
 
+  - name: fct_retention_monthly
+    description: Repeat orders per customer by month since the first order, counting only customers observed that long.
+    columns:
+      - name: month
+        data_tests: [unique, not_null]
+
+  - name: fct_ltv_decay
+    description: Monthly decay of repeat buying after month 6, shared by all channels, with a 95% interval.
+
+  - name: fct_channel_lifetime
+    description: Lifetime value per decided channel (180 days observed plus a discounted projection), lifetime ROI and payback month.
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+
   - name: fct_budget_allocation
     description: Freed budget split across SCALE channels at equal marginal ROI, each capped at its profitable spend.
     columns:

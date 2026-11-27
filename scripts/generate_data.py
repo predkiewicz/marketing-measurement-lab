@@ -8,6 +8,8 @@ Planted on purpose, so the checks in the dbt project have something to find:
   - a geo test with a known effect: a campaign in 6 of 16 German states lifts conversions by 8%
   - repeat purchases within 180 days that depend on the channel that brought the customer
     (REPEAT_RATE: coupon-driven affiliate customers come back least)
+  - repeat buying beyond 180 days that decays by LATE_DECAY per month, observed only until
+    OBSERVED_UNTIL (the analysis date), so each cohort is cut off at a different age
   - a consent banner: users who decline are invisible to tracking, at rates that differ by device,
     and device mix differs by channel (paid social is mostly iOS), so consent loss is uneven
   - budget-step tests with a known response curve per paid channel (CURVE_ELASTICITY)
@@ -229,6 +231,44 @@ def generate_holdouts(seed: int) -> dict[str, list[dict]]:
     return {"raw_holdout_daily": rows}
 
 
+# Repeat purchases after the first 180 days: the monthly rate of months 1-6 decays by LATE_DECAY per
+# month from month 7 on, the same for every channel. Orders after OBSERVED_UNTIL have not happened yet.
+LATE_DECAY = 0.85  # matches dbt var ltv_planted_decay
+LATE_MONTHS = 36
+OBSERVED_UNTIL = datetime(2026, 11, 27)  # matches dbt var observed_until
+
+
+def generate_late_repeats(tables: dict[str, list[dict]], repeats: list[dict], seed: int) -> list[dict]:
+    rng = random.Random(seed + 7)  # own random stream: the first 180 days stay exactly as they were
+    first_touch = {}
+    for tp in sorted(tables["raw_touchpoints"], key=lambda t: t["touch_ts"]):
+        first_touch.setdefault(tp["user_id"], tp["channel"])
+    rows, seen = [], set()
+    for o in tables["raw_orders"]:
+        if o["order_id"] in seen:
+            continue
+        seen.add(o["order_id"])
+        level = REPEAT_RATE[first_touch.get(o["user_id"], "direct")] / 6  # orders per month, months 1-6
+        first = datetime.fromisoformat(o["order_ts"])
+        for month in range(7, LATE_MONTHS + 1):
+            rate = level * LATE_DECAY ** (month - 6)
+            n, p, limit = 0, rng.random(), math.exp(-rate)
+            while p > limit:
+                n += 1
+                p *= rng.random()
+            for _ in range(n):
+                ts = first + timedelta(days=rng.uniform(max((month - 1) * 30, REPEAT_DAYS + 1), month * 30))  # never inside the 180-day value
+                if ts <= OBSERVED_UNTIL:
+                    rows.append({
+                        "repeat_order_id": f"r{len(repeats) + len(rows) + 1:05d}",
+                        "first_order_id": o["order_id"],
+                        "user_id": o["user_id"],
+                        "order_ts": ts.isoformat(sep=" ", timespec="seconds"),
+                        "revenue_eur": round(rng.lognormvariate(4.0, 0.5), 2),
+                    })
+    return rows
+
+
 # Consent: one banner decision per user, on the first visit. Rate by device; device mix by the channel
 # the user arrived through. Declining users' touchpoints never reach the tracking; their orders still
 # reach the shop's backend. The banner itself logs only aggregate counts per landing channel and device.
@@ -317,6 +357,7 @@ if __name__ == "__main__":
                    if r["is_holdout_region"] and r["is_test_period"]), "channel still on in holdout"
     repeats = generate_repeats(tables, a.seed)
     assert repeats == generate_repeats(tables, a.seed)
+    repeats["raw_repeat_orders"] += generate_late_repeats(tables, repeats["raw_repeat_orders"], a.seed)
     steps = generate_budget_steps(a.seed)
     assert steps == generate_budget_steps(a.seed)
     consent = generate_consent(tables, a.seed)
