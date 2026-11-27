@@ -56,6 +56,42 @@ models:
       - name: incrementality
         data_tests: [not_null]
 
+  - name: fct_customer_value
+    description: Cumulative gross profit per customer by day since the first order, up to the value horizon.
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+
+  - name: fct_channel_value
+    description: Average cumulative gross profit per customer by channel, weighted by position-based credit.
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+
+  - name: fct_channel_decisions
+    description: SCALE, TEST or STOP per paid channel and campaign, from ROI on incremental customers and its interval.
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+      - name: decision
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [SCALE, TEST, STOP]
+
+  - name: fct_channel_cashflow
+    description: Net cash per EUR 1,000 spent by day since acquisition, incremental customers only.
+    columns:
+      - name: net_cash_per_1000_eur
+        data_tests: [not_null]
+
+  - name: fct_budget_scenario
+    description: The always-on budget before and after applying the decisions.
+    columns:
+      - name: plan
+        data_tests: [unique, not_null]
+
   - name: qa_duplicate_orders
     description: Orders that arrived more than once in the raw feed.
 

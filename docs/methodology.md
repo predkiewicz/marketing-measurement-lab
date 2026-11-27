@@ -6,7 +6,7 @@ Every method in this repo is a choice, and every choice moves the numbers. This 
 
 ### Synthetic, seeded data with planted problems
 
-- **Decision:** generate all data with `scripts/generate_data.py` (Python standard library, fixed seed). Plant known problems and a known effect: duplicate purchase events, affiliate click injection, orders with no touchpoint, and an 8% lift in the geo test.
+- **Decision:** generate all data with `scripts/generate_data.py` (Python standard library, fixed seed). Plant known problems and known effects: duplicate purchase events, affiliate click injection, orders with no touchpoint, repeat purchases that depend on the acquisition channel, a known incrementality per paid channel, and an 8% lift in the geo test.
 - **Alternatives:** a public dataset (the GA4 sample e-commerce data); anonymised real data.
 - **Why:** with real data the true answer is unknown, so nobody can tell whether a method works. Planted problems give a ground truth: the QA models must find them and the geo readout must recover the 8%. A public repo also cannot hold real company data.
 - **Impact:** the methods are validated against a known answer. The data is cleaner than reality. For example, the gap between injected clicks (2 to 8 seconds) and real clicks (at least 4.5 hours) is wider than it would be in practice.
@@ -97,6 +97,64 @@ Every method in this repo is a choice, and every choice moves the numbers. This 
 - **Decision:** report blended CAC (all cost / all customers) together with paid-media-only, without-affiliate (as attributed and incremental) and fully incremental CAC.
 - **Why:** blended CAC is the number finance sees, and a cheap channel lowers it even if it only claims existing customers. Removing affiliates "as attributed" raises blended CAC from EUR 27.98 to EUR 29.77; removing them in the incremental view lowers it to EUR 27.71. The difference is the commission paid for customers who were coming anyway.
 - **Check:** `assert_cac_reconciles`: blended cost and customers match the books, the commission recomputed from the attribution table. Its first version read the commission from the model under test and stayed green when the commission was dropped; that is how the circular check was found.
+
+## Customer value and payback
+
+### 180-day gross profit, not first-order revenue
+
+- **Decision:** value a customer as gross profit (revenue x `gross_margin`, 50%) from the first order plus repeat orders within `value_horizon_days` (180). Per channel, weight each customer by position-based credit.
+- **Alternatives:** first-order ROAS; a predicted lifetime value (BG/NBD, Gamma-Gamma) over several years.
+- **Why:** first orders are worth about the same everywhere (EUR 29 to 31 of gross profit); channels differ in who comes back. Revenue overstates what pays the bills, so gross profit. 180 days is long enough to see repeat buying and short enough to be measured, not predicted: no model assumption sits between the data and the budget decision.
+- **Impact:** affiliate customers reach EUR 49.58 by day 180, paid social EUR 60.55. Over a longer horizon the gap grows.
+- **Check:** `assert_value_reconciles` recomputes total value from the sources; `assert_value_never_decreases` guards the cumulative logic.
+
+### Payback day and cash view
+
+- **Decision:** payback is the first 30-day step at which a customer's cumulative gross profit covers the channel's incremental CAC. The cash view shows net cash per EUR 1,000 spent at each step, counting only added customers.
+- **Why:** two channels with the same 180-day ROI can need very different amounts of cash in between. A channel that pays back in a month can be scaled from running revenue; one that needs six months has to be financed.
+- **Impact:** paid social is back in the black by day 30, display by day 90. Paid search still has EUR 619 of every EUR 1,000 under water at day 180.
+- **Check:** `assert_cashflow_matches_roi`: the cash line ends exactly where the ROI says.
+
+## Decisions
+
+### One number per channel: ROI on added customers
+
+- **Decision:** ROI = 180-day gross profit of the customers a channel added / its cost. Added customers = position-based customers x measured incrementality. The regional campaign uses the geo test's incremental conversions, valued at the all-customer average.
+- **Alternatives:** ROAS; CAC against a fixed target; contribution margin after a full year.
+- **Why:** it combines the three things that decide whether money is well spent: does the channel add customers (incrementality), are they worth it (value), and how fast (horizon). ROAS misses the first two, CAC misses the second.
+- **Assumption:** customers a channel adds are worth as much as the average customer it claims. If its added customers are better or worse than its claimed ones, the ROI moves with them.
+
+### SCALE, TEST, STOP with the uncertainty built in
+
+- **Decision:** SCALE when ROI >= 1.5 (`scale_min_roi`) and >= 1.0 in the worst case; STOP when ROI < 1.0 (`stop_max_roi`) even in the best case; TEST otherwise. Worst and best case come from the incrementality interval.
+- **Alternatives:** decide on the point estimate; rank channels and cut the bottom.
+- **Why:** on the point estimate, affiliate (ROI 0.85) would be stopped, although its interval reaches 3.27: a stop would rest on a test that cannot tell a losing channel from the best one. The rule says TEST instead and names what has to be measured. The 1.5 bar for scaling leaves room for diminishing returns.
+- **Impact:** paid social SCALE; display and affiliate TEST; paid search and the regional campaign STOP.
+- **Check:** `assert_every_paid_channel_decided`: no paid channel escapes a decision.
+
+### Budget plan with diminishing returns
+
+- **Decision:** STOP channels lose their cost and their *added* customers only. The freed budget goes to SCALE channels in proportion to their cost, at incremental CAC x 1.5 (`scale_cost_premium`). TEST channels stay as they are.
+- **Alternatives:** reallocate at today's average CAC; fit response curves.
+- **Why:** reallocating at today's CAC assumes the next euro works as well as the average one, which never holds. A response curve needs budget-step tests that this data does not have, so a flat premium stands in for it and is varied in the sensitivity check.
+- **Impact:** same budget, 1,504 instead of 1,339 customers, blended CAC EUR 24.91 instead of EUR 27.98, 180-day gross profit +14%.
+- **Check:** `assert_scenario_budget_neutral`. Its first version copied the total cost instead of adding up what it moved and could not fail; now it adds up the reallocated money, and a wrong allocation fails it.
+
+### Which decisions survive other assumptions
+
+Rerun with `dbt build --vars '{...}'`; ROI shown as expected value.
+
+| Assumption | Paid social | Display | Affiliate | Paid search | Regional campaign | Plan: blended CAC |
+|---|---|---|---|---|---|---:|
+| As set: 50% margin, 180 days, premium 50% | SCALE 1.68 | TEST 1.29 | TEST 0.85 | STOP 0.38 | STOP 0.50 | EUR 24.91 |
+| Gross margin 40% | TEST 1.34 | TEST 1.04 | TEST 0.68 | STOP 0.30 | STOP 0.40 | EUR 18.78 * |
+| Gross margin 60% | SCALE 2.01 | SCALE 1.55 | TEST 1.02 | STOP 0.46 | STOP 0.60 | EUR 25.09 |
+| 90 days of value | TEST 1.30 | TEST 1.04 | TEST 0.70 | STOP 0.31 | STOP 0.40 | EUR 18.78 * |
+| Scale premium 100% | SCALE 1.68 | TEST 1.29 | TEST 0.85 | STOP 0.38 | STOP 0.50 | EUR 26.04 |
+
+\* With no SCALE channel, the freed budget is saved instead of moved, so the plan spends less and blended CAC is not comparable with the other rows.
+
+The STOP decisions hold everywhere. The SCALE decision for paid social needs at least 50% gross margin and the full 180 days of value. A 100% premium on scaled budget misses the CAC goal by EUR 0.04: the reason to scale in steps and watch the cost per added customer.
 
 ## Geo test
 

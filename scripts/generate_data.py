@@ -6,6 +6,8 @@ Planted on purpose, so the checks in the dbt project have something to find:
   - click injection on one affiliate (click logged seconds before the order)
   - direct orders with no tracked touchpoint (typed URL, app, blocked tracking)
   - a geo test with a known effect: a campaign in 6 of 16 German states lifts conversions by 8%
+  - repeat purchases within 180 days that depend on the channel that brought the customer
+    (REPEAT_RATE: coupon-driven affiliate customers come back least)
   - channel holdout tests with known incrementality: part of what a channel claims would have
     arrived anyway as organic or unattributed (HOLDOUT_INCREMENTALITY)
 
@@ -14,6 +16,7 @@ Writes CSVs to seeds/.
 """
 import argparse
 import csv
+import math
 import random
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -142,6 +145,43 @@ def generate_geo(seed: int) -> dict[str, list[dict]]:
     return {"raw_geo_regions": regions, "raw_geo_daily": daily}
 
 
+# Repeat purchases: expected number of further orders within REPEAT_DAYS of the first one, by the
+# channel of the customer's first touch. Direct customers have no touch ('direct').
+REPEAT_RATE = {
+    "paid_social": 1.0, "display": 0.7, "paid_search": 0.8, "affiliate": 0.3,
+    "email": 1.2, "organic": 1.1, "direct": 1.0,
+}
+REPEAT_DAYS = 180
+
+
+def generate_repeats(tables: dict[str, list[dict]], seed: int) -> dict[str, list[dict]]:
+    rng = random.Random(seed + 4)  # own random stream
+    first_touch = {}
+    for tp in sorted(tables["raw_touchpoints"], key=lambda t: t["touch_ts"]):
+        first_touch.setdefault(tp["user_id"], tp["channel"])
+    rows, seen = [], set()
+    for o in tables["raw_orders"]:
+        if o["order_id"] in seen:  # duplicate purchase event, not a second order
+            continue
+        seen.add(o["order_id"])
+        rate = REPEAT_RATE[first_touch.get(o["user_id"], "direct")]
+        # Poisson draw (Knuth), stdlib only
+        n, p, limit = 0, rng.random(), math.exp(-rate)
+        while p > limit:
+            n += 1
+            p *= rng.random()
+        first = datetime.fromisoformat(o["order_ts"])
+        for _ in range(n):
+            rows.append({
+                "repeat_order_id": f"r{len(rows) + 1:05d}",
+                "first_order_id": o["order_id"],
+                "user_id": o["user_id"],
+                "order_ts": (first + timedelta(days=rng.uniform(1, REPEAT_DAYS))).isoformat(sep=" ", timespec="seconds"),
+                "revenue_eur": round(rng.lognormvariate(4.0, 0.5), 2),
+            })
+    return {"raw_repeat_orders": rows}
+
+
 # Channel holdouts (2025): each paid channel switched off in half the regions for 28 days, one
 # test after another. Planted truth: the share of a channel's attributed conversions that would
 # NOT have happened without it. The rest would have arrived anyway as organic / unattributed.
@@ -213,4 +253,6 @@ if __name__ == "__main__":
     assert holdouts == generate_holdouts(a.seed)
     assert not any(r["conversions_channel"] for r in holdouts["raw_holdout_daily"]
                    if r["is_holdout_region"] and r["is_test_period"]), "channel still on in holdout"
-    write(tables | geo | holdouts)
+    repeats = generate_repeats(tables, a.seed)
+    assert repeats == generate_repeats(tables, a.seed)
+    write(tables | geo | holdouts | repeats)

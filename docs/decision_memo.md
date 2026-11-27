@@ -1,74 +1,86 @@
-# Decision memo: Q2 marketing measurement review
+# Decision memo: marketing budget, next quarter
 
-To: VP Marketing, CFO · From: Marketing Analytics · Data: January to June 2026, channel holdout tests 2025
+To: VP Marketing, CFO · From: Marketing Analytics · Data: orders January to March 2026 with 180 days of repeat purchases, channel holdout tests 2025, regional campaign June 2026
 
 *Fictional company, synthetic data. Every number comes from a fresh `dbt build` of this repo; `python scripts/report.py` prints them.*
 
-## The short version
+## Our goals
 
-1. **Do not cut social and display on last-click numbers.** They open most customer journeys. Last click undervalues them by more than 20%; paid search looks better than it is.
-2. **Fix two tracking problems before the next budget round.** Duplicate purchase events overstate revenue by 2.2%, and one affiliate source claims commission with injected clicks.
-3. **Paid search and affiliates mostly claim customers who would have come anyway.** Holdout tests show about 38% of paid search customers and about 11% of affiliate customers are new. Per added customer, paid search costs EUR 147 and affiliates EUR 58, not EUR 42 and EUR 6.
-4. **The regional campaign works, but it is not yet clear that it pays.** It lifted conversions by about 8%. One extra customer costs between EUR 78 and EUR 210, against an average first order of EUR 60.
+- Every euro of acquisition is paid back by gross profit within 180 days.
+- Blended CAC under EUR 26 (today: EUR 27.98).
 
-## 1. Channel budgets depend on the attribution model
+## The decisions
 
-| Channel | ROAS, last click | ROAS, position-based |
-|---|---:|---:|
-| Paid social | 1.48 | 1.83 |
-| Display | 1.92 | 2.35 |
-| Paid search | 1.41 | 1.07 |
-
-Most journeys start on social or display and end on search. Last click gives search all the credit for demand the other channels created. Position-based attribution (40% first touch, 40% last, 20% for the touches in between) shares it out. Under that view, paid search is close to break-even.
-
-Attribution shows who was present, not who caused the sale. Section 2 adds what the holdout tests found.
-
-## 2. What a customer really costs
-
-Each paid channel was switched off in half the regions for 28 days in 2025. The drop in total conversions shows what the channel adds; the rest of what it claims came back as organic or unattributed.
-
-| Channel | New customers per 100 claimed | CAC, last click | CAC, per added customer |
-|---|---:|---:|---:|
-| Paid social | 92 (76 to 100) | EUR 41.65 | EUR 36.06 |
-| Display | 64 (45 to 83) | EUR 31.55 | EUR 41.01 |
-| Paid search | 38 (29 to 48) | EUR 42.04 | EUR 147.21 |
-| Affiliate | 11 (0 to 43) | EUR 5.92 | EUR 58.29 |
-
-Ranges are 95% intervals, capped at 0 and 100; the raw intervals are in the [methodology](methodology.md).
-
-Affiliates make blended CAC look better: EUR 27.98 with them, EUR 29.77 without, if all their customers were really theirs. But only about 12 of their 103 customers are new. Without affiliates the business would save EUR 675 in commission, lose about 12 customers, and blended CAC would fall to EUR 27.71.
-
-## 3. Two tracking problems distort the numbers
-
-| Problem | Found | Effect |
+| Channel | Decision | What we do next quarter |
 |---|---|---|
-| Purchase tag fires twice | 29 orders | Revenue overstated by EUR 1,806 (2.2%) in any report that sums the raw feed |
-| Affiliate click injection | 48 clicks logged 2 to 8 seconds before checkout | EUR 2,912 of orders claimed; about EUR 291 in commission at the 10% rate |
+| Paid social | **SCALE** | Move the paid search budget here in steps, and check the cost per customer at each step |
+| Display | **TEST** | Repeat the holdout with more regions or more weeks before deciding |
+| Affiliate | **TEST** | Pause in half the regions for 8 weeks; withhold commission on 48 orders with injected clicks |
+| Paid search | **STOP** | Switch off in its current form; keep a small budget only where a test shows it adds customers |
+| Regional campaign | **STOP** | Do not repeat in this form |
 
-Both are already corrected in the reported numbers: duplicates are removed, and injected clicks earn no credit. The open actions are a fix at the source (the tag) and a dispute with the affiliate network.
+With the same budget, these decisions bring 12% more customers and 14% more gross profit, and blended CAC falls to EUR 24.91, below the goal.
 
-## 4. The regional campaign: a real effect with a wide cost range
+![Return on the customers each channel added, after 180 days, worst to best case](decisions.svg)
 
-The campaign ran for 28 days in 6 of 16 federal states. The other 10 states were the comparison group.
+## How we decide
 
-![Treatment and control regions, 7-day average](geo_test.svg)
+For each channel, one number: the 180-day gross profit of the customers it **added**, per euro it cost (ROI). At 1.0 the channel has paid for itself within 180 days. Every measurement has an uncertainty range, so the rule only speaks when the range allows it:
 
-| | Estimate | 95% interval |
+- **SCALE** when ROI is at least 1.5, and at least 1.0 even in the pessimistic case.
+- **STOP** when ROI is below 1.0 even in the optimistic case.
+- **TEST** otherwise: the data cannot yet back a scale or a stop.
+
+"Customers it added" is the key part. A channel can claim many customers who would have bought anyway. We measured this by switching each channel off in half the regions for 28 days and checking how much total sales dropped.
+
+## Channel by channel
+
+| Channel | New customers per 100 claimed | Cost per added customer | 180-day gross profit per customer | ROI: worst / expected / best | Paid back |
+|---|---:|---:|---:|---|---:|
+| Paid social | 92 | EUR 36.06 | EUR 60.55 | 1.39 / 1.68 / 1.83 | by day 30 |
+| Display | 64 | EUR 41.01 | EUR 53.08 | 0.92 / 1.29 / 1.68 | by day 90 |
+| Affiliate | 11 | EUR 58.29 | EUR 49.58 | 0.00 / 0.85 / 3.27 | no |
+| Paid search | 38 | EUR 147.21 | EUR 56.09 | 0.29 / 0.38 / 0.48 | no |
+| Regional campaign | n/a | EUR 113.24 | EUR 57.02 | 0.27 / 0.50 / 0.73 | no |
+
+**Paid social: scale.** Its customers are almost all new (92 of 100), they come back more than those of any other paid channel, and the money is back within a month. Even the pessimistic case pays back. It opens most customer journeys, which last-click reports hide: there it costs about the same per customer as search (EUR 42).
+
+**Paid search: stop.** In last-click reports it looks fine (CAC EUR 42), because it closes journeys that other channels started. But 62 of every 100 customers it claims would have found us anyway. Per customer it actually adds, it costs EUR 147, and even in the best case only half of that comes back within 180 days. Of every EUR 1,000 spent, EUR 619 is still lost after six months.
+
+**Affiliate: test.** It looks like our cheapest channel (CAC EUR 6) and it lowers blended CAC on paper. But only about 11 of every 100 affiliate customers are new, and they come back the least. The holdout is too uncertain to stop on: the true value lies anywhere between losing everything and the best channel we have. We also found 48 injected clicks, logged seconds before checkout to claim commission; those orders are excluded from all numbers above.
+
+**Display: test.** Probably profitable (expected ROI 1.29, paid back by day 90), but in the pessimistic case it does not pay back within 180 days. One sharper test decides between scale and keep.
+
+**Regional campaign: stop.** It works: conversions in the campaign regions rose by 8% (4% to 12%). But each extra customer cost EUR 113, and a customer brings EUR 57 of gross profit in 180 days. Each EUR 81,984 run returns about EUR 41,000.
+
+## What the plan does to the goals
+
+| | Current | After the decisions |
 |---|---:|---:|
-| Lift in conversions | +8.1% | +4.2% to +12.1% |
-| Extra conversions | 724 | 390 to 1,047 |
-| Cost per extra conversion (EUR 81,984 spend) | EUR 113 | EUR 78 to EUR 210 |
+| Budget | EUR 37,464 | EUR 37,464 |
+| Customers | 1,339 | 1,504 |
+| Blended CAC | EUR 27.98 | EUR 24.91 |
+| 180-day gross profit | EUR 76,353 | EUR 86,783 |
+| CAC goal (under EUR 26) | missed | met |
 
-The effect is real: even the low end of the interval is above zero, and the same method finds no effect in a period when nothing changed. The cost per extra customer is less certain. At EUR 113 it is about 1.9 average first orders, so the campaign pays back only if a customer orders about twice or more. This dataset cannot answer that yet; a lifetime value model is on the roadmap.
+The plan assumes the budget moved to paid social buys customers 50% more expensively than today (EUR 54 instead of EUR 36), because the next euro in a channel is never as good as the average one. If it is twice as expensive, blended CAC lands at EUR 26.04 and just misses the goal. That is why social is scaled in steps, with the cost per added customer checked at each step.
+
+## How sure we are
+
+- **Paid search and the regional campaign:** STOP holds under every assumption we tried (gross margin 40% to 60%, 90 or 180 days of customer value).
+- **Paid social:** SCALE holds at our 50% gross margin and 180-day horizon. At 40% margin, or with only 90 days of value, it drops to TEST: still profitable, but not by enough to scale with confidence.
+- **Display:** becomes SCALE only at 60% margin.
+
+The tracking is cleaned before any of this: 29 duplicate purchase events (2.2% of revenue overstated) are removed, and injected affiliate clicks get no credit.
 
 ## Decisions needed
 
 | # | Decision | Recommendation | Owner |
 |---|---|---|---|
-| 1 | Default attribution model in reporting | Position-based, with last click shown next to it | VP Marketing |
-| 2 | Maximum cost per extra customer | Set from margin and repeat rate. Above EUR 210: scale the campaign. Between EUR 78 and 210: extend the test. Below EUR 78: stop. | CFO |
-| 3 | Affiliate programme | Withhold commission on the 48 flagged orders. Renegotiate to pay only for new customers, or pause the programme in a few regions and confirm the holdout result. | Performance team |
-| 4 | Paid search budget | Cut bids on terms where customers find the shop anyway (brand terms first) in a few regions, and measure the drop in total conversions before cutting nationally | Performance team |
-| 5 | Display | Repeat the holdout with more regions or more weeks; the current test cannot say whether display is mostly new demand | Analytics |
+| 1 | Stop paid search in its current form, move the budget to paid social | Yes, in monthly steps. Pause the next step if social's cost per added customer rises above EUR 54 (what the plan assumes); above EUR 61 the extra budget no longer pays back in 180 days | VP Marketing |
+| 2 | Affiliate programme | Pause in half the regions for 8 weeks; withhold commission on the 48 flagged orders; renegotiate to pay only for new customers | Performance team |
+| 3 | Display | Repeat the holdout with more regions or weeks, sized in advance with the power analysis | Analytics |
+| 4 | Regional campaign | Do not repeat in this form | VP Marketing |
+| 5 | Reporting | Report ROI on added customers next to last-click ROAS, and base budget decisions on it | VP Marketing, CFO |
 
 How these numbers were produced and why each method was chosen: [methodology.md](methodology.md).
