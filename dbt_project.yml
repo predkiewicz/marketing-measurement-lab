@@ -14,6 +14,12 @@ vars:
   affiliate_fee: 0.10        # affiliate commission, share of attributed revenue (matches generate_data.py)
   geo_test_start: "2026-06-01"  # first day the campaign runs in the treatment regions
   geo_ci_z: 1.96             # 95% interval for the geo test readout
+  incrementality_threshold: 0.5  # verdict line: interval wholly below = mostly claims existing demand, wholly above = mostly incremental
+  holdout_planted_incrementality:  # planted by generate_data.py (HOLDOUT_INCREMENTALITY); only the tests use it
+    paid_social: 0.85
+    display: 0.60
+    paid_search: 0.45
+    affiliate: 0.15
   geo_planted_lift: 0.08     # true effect planted by generate_data.py (GEO_LIFT); only the tests use it
 
 seeds:
@@ -26,6 +32,8 @@ seeds:
       +column_types: {spend_date: date}
     raw_geo_daily:
       +column_types: {geo_date: date}
+    raw_holdout_daily:
+      +column_types: {holdout_date: date}
 
 models:
   measurement_lab:

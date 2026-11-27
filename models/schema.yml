@@ -33,6 +33,29 @@ models:
       - name: channel
         data_tests: [unique, not_null]
 
+  - name: fct_channel_cac
+    description: Cost per customer per channel under last click, position-based and incremental views.
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+
+  - name: fct_blended_cac
+    description: Blended CAC next to paid-only, without-affiliate and incremental views.
+    columns:
+      - name: view
+        data_tests: [unique, not_null]
+
+  - name: fct_holdout_daily
+    description: Channel holdout tests, one row per test and day, holdout vs control.
+
+  - name: fct_channel_incrementality
+    description: Share of a channel's attributed conversions that are incremental, from its holdout test, with a 95% interval.
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+      - name: incrementality
+        data_tests: [not_null]
+
   - name: qa_duplicate_orders
     description: Orders that arrived more than once in the raw feed.
 

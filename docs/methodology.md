@@ -62,10 +62,41 @@ Every method in this repo is a choice, and every choice moves the numbers. This 
 - **Impact:** 60 orders, EUR 3,621.
 - **Check:** `assert_revenue_reconciles` compares attributed revenue with all orders. With an inner join it fails.
 
-### Affiliate ROAS is always 10
+### Affiliate cost is the network's invoice
 
-- **Decision:** affiliate cost is a 10% commission on attributed revenue (`affiliate_fee`).
-- **Impact:** ROAS is 1 / 0.10 = 10 by construction, under every model. It says nothing about whether affiliates drive sales. Only an incrementality test can answer that.
+- **Decision:** affiliate cost is the 10% commission (`affiliate_fee`) on the orders the network claims by last click. It does not move with our attribution model.
+- **Alternatives:** scale the commission with each model's credit (the first version did this).
+- **Why:** the network invoices on its own last-click claim, whatever model we report. Scaling the cost with our model made affiliate ROAS exactly 10 under every model, which looked like a finding but was only arithmetic.
+- **Impact:** affiliate ROAS is 10 under last click (1 / fee, by construction) and 9.04 under position-based. Neither says whether affiliates add customers; the holdout tests do.
+
+## Incrementality and CAC
+
+### One holdout test per paid channel
+
+- **Decision:** switch each paid channel off in 8 of 16 regions for 28 days, after 56 days of history, one channel after another (2025). Measure the drop in *total* conversions with the same difference-in-differences estimator as the geo test.
+- **Alternatives:** compare channel-attributed numbers before and after; marketing mix modelling; ghost ads or platform lift studies.
+- **Why:** when a channel is off, its attributed conversions always vanish; the question is whether total conversions vanish with them or come back as organic and unattributed. Only the total answers that. Half of the regions as holdout gives more precision than the geo test's 6 of 16, because the effect on total conversions is small for small channels.
+- **Impact:** incrementality = conversions lost in total / conversions the channel would have claimed. Paid social 0.92, display 0.64, paid search 0.38, affiliate 0.11.
+- **Check:** `assert_incrementality_recovers_planted`: every interval contains the planted value. Assuming every attributed conversion is incremental makes it fail for all four channels.
+- **Limit:** a holdout costs revenue while it runs (the incremental part of the channel is switched off). Affiliate's interval reaches below zero, which is impossible in reality and shows how hard a 9% channel is to measure: a sharper answer needs more regions or a longer test.
+
+### Verdict line at 0.5
+
+- **Decision:** a channel "mostly claims existing demand" when its whole interval is below 0.5, is "mostly incremental" when its whole interval is above, and is "inconclusive" otherwise (`incrementality_threshold`).
+- **Why:** a verdict from the point estimate alone would call display incremental at 0.64, although its interval reaches down to 0.45. The rule only speaks when the test can.
+
+### CAC: last click, position-based and incremental, side by side
+
+- **Decision:** cost per customer three ways. Incremental CAC = cost / (position-based customers × measured incrementality). Every customer orders once in this data, so customers = orders.
+- **Why:** each view answers a different question. Last click: what the platforms report. Position-based: who took part in the journey. Incremental: what the money actually bought.
+- **Assumption:** incrementality measured in the 2025 holdouts still holds for the 2026 attribution data. If channel strategy changes (new bidding, new affiliate partners), the holdout has to be repeated.
+- **Impact:** paid search costs EUR 42 per customer by last click and EUR 147 per added customer; affiliate EUR 6 and EUR 58.
+
+### Blended CAC next to the views that explain it
+
+- **Decision:** report blended CAC (all cost / all customers) together with paid-media-only, without-affiliate (as attributed and incremental) and fully incremental CAC.
+- **Why:** blended CAC is the number finance sees, and a cheap channel lowers it even if it only claims existing customers. Removing affiliates "as attributed" raises blended CAC from EUR 27.98 to EUR 29.77; removing them in the incremental view lowers it to EUR 27.71. The difference is the commission paid for customers who were coming anyway.
+- **Check:** `assert_cac_reconciles`: blended cost and customers match the books, the commission recomputed from the attribution table. Its first version read the commission from the model under test and stayed green when the commission was dropped; that is how the circular check was found.
 
 ## Geo test
 

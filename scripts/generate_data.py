@@ -6,6 +6,8 @@ Planted on purpose, so the checks in the dbt project have something to find:
   - click injection on one affiliate (click logged seconds before the order)
   - direct orders with no tracked touchpoint (typed URL, app, blocked tracking)
   - a geo test with a known effect: a campaign in 6 of 16 German states lifts conversions by 8%
+  - channel holdout tests with known incrementality: part of what a channel claims would have
+    arrived anyway as organic or unattributed (HOLDOUT_INCREMENTALITY)
 
 Usage: python scripts/generate_data.py [--users N] [--seed S]
 Writes CSVs to seeds/.
@@ -140,6 +142,50 @@ def generate_geo(seed: int) -> dict[str, list[dict]]:
     return {"raw_geo_regions": regions, "raw_geo_daily": daily}
 
 
+# Channel holdouts (2025): each paid channel switched off in half the regions for 28 days, one
+# test after another. Planted truth: the share of a channel's attributed conversions that would
+# NOT have happened without it. The rest would have arrived anyway as organic / unattributed.
+HOLDOUT_INCREMENTALITY = {  # matches dbt var holdout_planted_incrementality
+    "paid_social": 0.85, "display": 0.60, "paid_search": 0.45, "affiliate": 0.15,
+}
+HOLDOUT_SHARES = {  # share of a region's daily conversions attributed to each channel
+    "paid_search": 0.28, "paid_social": 0.22, "display": 0.14, "affiliate": 0.09, "email": 0.09,
+}  # the remaining 18% is organic / unattributed
+HOLDOUT_START = datetime(2025, 1, 6)  # a Monday
+HOLDOUT_PRE_DAYS, HOLDOUT_TEST_DAYS, HOLDOUT_REGIONS = 56, 28, 8
+
+
+def generate_holdouts(seed: int) -> dict[str, list[dict]]:
+    rng = random.Random(seed + 3)  # own random stream
+    codes = list(REGIONS)
+    rows = []
+    for k, channel in enumerate(HOLDOUT_INCREMENTALITY):
+        held_out = set(rng.sample(codes, HOLDOUT_REGIONS))
+        start = HOLDOUT_START + timedelta(days=k * (HOLDOUT_PRE_DAYS + HOLDOUT_TEST_DAYS))
+        for d in range(HOLDOUT_PRE_DAYS + HOLDOUT_TEST_DAYS):
+            day = start + timedelta(days=d)
+            national = (0.85 if day.weekday() >= 5 else 1.0) * (1 + 0.002 * d) * rng.gauss(1, 0.04)
+            for c, (_, pop) in REGIONS.items():
+                mu = pop * GEO_CONV_PER_M * national * rng.gauss(1, 0.05)
+                mu_channel = mu * HOLDOUT_SHARES[channel]
+                off = d >= HOLDOUT_PRE_DAYS and c in held_out
+                if off:  # channel switched off: only the non-incremental part comes back as organic
+                    mu -= mu_channel * HOLDOUT_INCREMENTALITY[channel]
+                    mu_channel = 0.0
+                channel_conv = max(0, round(rng.gauss(mu_channel, mu_channel ** 0.5))) if mu_channel else 0
+                other = max(0, round(rng.gauss(mu - mu_channel, (mu - mu_channel) ** 0.5)))
+                rows.append({
+                    "test_channel": channel,
+                    "holdout_date": day.date().isoformat(),
+                    "region_code": c,
+                    "is_holdout_region": c in held_out,
+                    "is_test_period": d >= HOLDOUT_PRE_DAYS,
+                    "conversions_total": channel_conv + other,
+                    "conversions_channel": channel_conv,
+                })
+    return {"raw_holdout_daily": rows}
+
+
 def write(tables: dict[str, list[dict]]) -> None:
     OUT.mkdir(exist_ok=True)
     for name, rows in tables.items():
@@ -163,4 +209,8 @@ if __name__ == "__main__":
     geo = generate_geo(a.seed)
     assert geo == generate_geo(a.seed)
     assert sum(r["test_group"] == "treatment" for r in geo["raw_geo_regions"]) == GEO_TREATED
-    write(tables | geo)
+    holdouts = generate_holdouts(a.seed)
+    assert holdouts == generate_holdouts(a.seed)
+    assert not any(r["conversions_channel"] for r in holdouts["raw_holdout_daily"]
+                   if r["is_holdout_region"] and r["is_test_period"]), "channel still on in holdout"
+    write(tables | geo | holdouts)

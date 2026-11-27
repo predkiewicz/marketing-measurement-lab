@@ -12,6 +12,18 @@ QUERIES = {
     "ROAS per channel, last click vs position-based": """
         select channel, revenue_last_click, revenue_position_based, roas_last_click, roas_position_based
         from fct_channel_roas order by revenue_position_based desc""",
+    "CAC per channel: attributed vs incremental": """
+        select channel, cost_eur, round(customers_last_click, 1) as customers_lc,
+               round(customers_position_based, 1) as customers_pb, incrementality,
+               round(customers_incremental, 1) as customers_incr,
+               cac_last_click, cac_position_based, cac_incremental
+        from fct_channel_cac order by cost_eur desc, channel""",
+    "Blended CAC views": """
+        select view, cost_eur, customers, cac from fct_blended_cac order by sort""",
+    "Incrementality per channel (holdout tests)": """
+        select channel, channel_conversions_lost, incremental_conversions, incrementality,
+               incrementality_low, incrementality_high, share_taken_from_existing_demand, verdict
+        from fct_channel_incrementality order by incrementality desc""",
     "Tracking QA": """
         select 'duplicate purchase events' as check_name, count(*) as findings,
                round(sum(revenue_overstated_eur), 2) as revenue_eur from qa_duplicate_orders
